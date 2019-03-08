@@ -21,18 +21,18 @@ class RPNHead(AnchorHead):
         self.rpn_cls_s0 = nn.Conv2d(self.feat_channels,
                                  self.num_anchors * self.cls_out_channels, 1)
         self.rpn_cls_s2 = nn.Conv2d(self.feat_channels,
-                                       self.num_anchors * self.cls_out_channels, 1, dilation=2)
+                                    self.num_anchors * self.cls_out_channels, 2, stride=2)
         self.rpn_cls_s4 = nn.Conv2d(self.feat_channels,
-                                       self.num_anchors * self.cls_out_channels, 1, dilation=4)
+                                    self.num_anchors * self.cls_out_channels, 4, stride=4)
         self.rpn_cls_s8 = nn.Conv2d(self.feat_channels,
-                                       self.num_anchors * self.cls_out_channels, 1, dilation=8)
+                                    self.num_anchors * self.cls_out_channels, 8, stride=8)
         self.rpn_cls_s16 = nn.Conv2d(self.feat_channels,
-                                       self.num_anchors * self.cls_out_channels, 1, dilation=16)
+                                    self.num_anchors * self.cls_out_channels, 16, stride=16)
         self.rpn_reg_s0 = nn.Conv2d(self.feat_channels, self.num_anchors * 4, 1)
-        self.rpn_reg_s2 = nn.Conv2d(self.feat_channels, self.num_anchors * 4, 1, dilation=2)
-        self.rpn_reg_s4 = nn.Conv2d(self.feat_channels, self.num_anchors * 4, 1, dilation=4)
-        self.rpn_reg_s8 = nn.Conv2d(self.feat_channels, self.num_anchors * 4, 1, dilation=8)
-        self.rpn_reg_s16 = nn.Conv2d(self.feat_channels, self.num_anchors * 4, 1, dilation=16)
+        self.rpn_reg_s2 = nn.Conv2d(self.feat_channels, self.num_anchors * 4, 2, stride=2)
+        self.rpn_reg_s4 = nn.Conv2d(self.feat_channels, self.num_anchors * 4, 4, stride=4)
+        self.rpn_reg_s8 = nn.Conv2d(self.feat_channels, self.num_anchors * 4, 8, stride=8)
+        self.rpn_reg_s16 = nn.Conv2d(self.feat_channels, self.num_anchors * 4, 16, stride=16)
 
     def init_weights(self):
         normal_init(self.rpn_conv, std=0.01)
