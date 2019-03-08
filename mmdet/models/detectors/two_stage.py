@@ -1,12 +1,13 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from .base import BaseDetector
 from .test_mixins import RPNTestMixin, BBoxTestMixin, MaskTestMixin
 from .. import builder
 from ..registry import DETECTORS
 from mmdet.core import bbox2roi, bbox2result, build_assigner, build_sampler
-
+import numpy as np
 
 @DETECTORS.register_module
 class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
@@ -85,7 +86,11 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
                       gt_labels,
                       gt_masks=None,
                       proposals=None):
-        x = self.extract_feat(img)
+        down_img_h, down_img_w = img.size(2)//2, img.size(3)//2
+        down_img_h = int(np.ceil(down_img_h / 32) * 32)
+        down_img_w = int(np.ceil(down_img_w / 32) * 32)
+        down_img = F.interpolate(img, size=(down_img_h, down_img_w) ,mode='bilinear', align_corners=True)
+        x = self.extract_feat(down_img)
 
         losses = dict()
 
