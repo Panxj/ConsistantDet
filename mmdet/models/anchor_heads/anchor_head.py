@@ -84,7 +84,23 @@ class AnchorHead(nn.Module):
         return cls_score, bbox_pred
 
     def forward(self, feats):
-        return multi_apply(self.forward_single, feats)
+        rpn_out = []
+        rpn_out.append(multi_apply(self.forward_single_s0, feats))
+        rpn_out.append(multi_apply(self.forward_single_s2, feats[:-1]))
+        rpn_out.append(multi_apply(self.forward_single_s4, feats[:-2]))
+        rpn_out.append(multi_apply(self.forward_single_s8, feats[:-3]))
+        rpn_out.append(multi_apply(self.forward_single_s16, feats[:-4]))
+        # return multi_apply(self.forward_single, feats)
+
+        for i in range(len(rpn_out)):
+            num = len(rpn_out) - i
+            for j in range(1, num):
+                rpn_out[0][0][i] += rpn_out[j][0][i]
+                rpn_out[0][1][i] += rpn_out[j][1][i]
+            rpn_out[0][0][i] /= num
+            rpn_out[0][1][i] /= num
+
+        return rpn_out[0]
 
     def get_anchors(self, featmap_sizes, img_metas):
         """Get anchors according to feature map sizes.
