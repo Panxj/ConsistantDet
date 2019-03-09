@@ -18,40 +18,40 @@ class RPNHead(AnchorHead):
     def _init_layers(self):
         self.rpn_conv = nn.Conv2d(
             self.in_channels, self.feat_channels, 3, padding=1)
-        self.rpn_cls_s0 = nn.Conv2d(self.feat_channels,
+        self.rpn_cls = nn.Conv2d(self.feat_channels,
                                  self.num_anchors * self.cls_out_channels, 1)
         self.rpn_cls_s2 = nn.Conv2d(self.feat_channels,
-                                    self.num_anchors * self.cls_out_channels, 2, stride=2)
-        self.rpn_cls_s4 = nn.Conv2d(self.feat_channels,
-                                    self.num_anchors * self.cls_out_channels, 4, stride=4)
-        self.rpn_cls_s8 = nn.Conv2d(self.feat_channels,
-                                    self.num_anchors * self.cls_out_channels, 8, stride=8)
-        self.rpn_cls_s16 = nn.Conv2d(self.feat_channels,
-                                    self.num_anchors * self.cls_out_channels, 16, stride=16)
-        self.rpn_reg_s0 = nn.Conv2d(self.feat_channels, self.num_anchors * 4, 1)
-        self.rpn_reg_s2 = nn.Conv2d(self.feat_channels, self.num_anchors * 4, 2, stride=2)
-        self.rpn_reg_s4 = nn.Conv2d(self.feat_channels, self.num_anchors * 4, 4, stride=4)
-        self.rpn_reg_s8 = nn.Conv2d(self.feat_channels, self.num_anchors * 4, 8, stride=8)
-        self.rpn_reg_s16 = nn.Conv2d(self.feat_channels, self.num_anchors * 4, 16, stride=16)
+                                    self.num_anchors * self.cls_out_channels, 3, padding=1, stride=2)
+        # self.rpn_cls_s4 = nn.Conv2d(self.feat_channels,
+        #                             self.num_anchors * self.cls_out_channels, 4, stride=4)
+        # self.rpn_cls_s8 = nn.Conv2d(self.feat_channels,
+        #                             self.num_anchors * self.cls_out_channels, 8, stride=8)
+        # self.rpn_cls_s16 = nn.Conv2d(self.feat_channels,
+        #                             self.num_anchors * self.cls_out_channels, 16, stride=16)
+        self.rpn_reg = nn.Conv2d(self.feat_channels, self.num_anchors * 4, 1)
+        self.rpn_reg_s2 = nn.Conv2d(self.feat_channels, self.num_anchors * 4, 3, padding=1, stride=2)
+        # self.rpn_reg_s4 = nn.Conv2d(self.feat_channels, self.num_anchors * 4, 4, stride=4)
+        # self.rpn_reg_s8 = nn.Conv2d(self.feat_channels, self.num_anchors * 4, 8, stride=8)
+        # self.rpn_reg_s16 = nn.Conv2d(self.feat_channels, self.num_anchors * 4, 16, stride=16)
 
     def init_weights(self):
         normal_init(self.rpn_conv, std=0.01)
-        normal_init(self.rpn_cls_s0, std=0.01)
-        normal_init(self.rpn_reg_s0, std=0.01)
-        normal_init(self.rpn_cls_s2, std=0.01)
+        normal_init(self.rpn_cls, std=0.01)
         normal_init(self.rpn_reg_s2, std=0.01)
-        normal_init(self.rpn_cls_s4, std=0.01)
-        normal_init(self.rpn_reg_s4, std=0.01)
-        normal_init(self.rpn_cls_s8, std=0.01)
-        normal_init(self.rpn_reg_s8, std=0.01)
-        normal_init(self.rpn_cls_s16, std=0.01)
-        normal_init(self.rpn_reg_s16, std=0.01)
+        # normal_init(self.rpn_cls_s4, std=0.01)
+        # normal_init(self.rpn_reg_s8, std=0.01)
+        # normal_init(self.rpn_cls_s16, std=0.01)
+        normal_init(self.rpn_reg, std=0.01)
+        normal_init(self.rpn_cls_s2, std=0.01)
+        # normal_init(self.rpn_reg_s4, std=0.01)
+        # normal_init(self.rpn_cls_s8, std=0.01)
+        # normal_init(self.rpn_reg_s16, std=0.01)
 
-    def forward_single_s0(self, x):
+    def forward_single(self, x):
         x = self.rpn_conv(x)
         x = F.relu(x, inplace=True)
-        rpn_cls_score = self.rpn_cls_s0(x)
-        rpn_bbox_pred = self.rpn_reg_s0(x)
+        rpn_cls_score = self.rpn_cls(x)
+        rpn_bbox_pred = self.rpn_reg(x)
         return rpn_cls_score, rpn_bbox_pred
     def forward_single_s2(self, x):
         x = self.rpn_conv(x)
@@ -59,27 +59,27 @@ class RPNHead(AnchorHead):
         rpn_cls_score = self.rpn_cls_s2(x)
         rpn_bbox_pred = self.rpn_reg_s2(x)
         return rpn_cls_score, rpn_bbox_pred
-
-    def forward_single_s4(self, x):
-        x = self.rpn_conv(x)
-        x = F.relu(x, inplace=True)
-        rpn_cls_score = self.rpn_cls_s4(x)
-        rpn_bbox_pred = self.rpn_reg_s4(x)
-        return rpn_cls_score, rpn_bbox_pred
-
-    def forward_single_s8(self, x):
-        x = self.rpn_conv(x)
-        x = F.relu(x, inplace=True)
-        rpn_cls_score = self.rpn_cls_s8(x)
-        rpn_bbox_pred = self.rpn_reg_s8(x)
-        return rpn_cls_score, rpn_bbox_pred
-
-    def forward_single_s16(self, x):
-        x = self.rpn_conv(x)
-        x = F.relu(x, inplace=True)
-        rpn_cls_score = self.rpn_cls_s16(x)
-        rpn_bbox_pred = self.rpn_reg_s16(x)
-        return rpn_cls_score, rpn_bbox_pred
+    #
+    # def forward_single_s4(self, x):
+    #     x = self.rpn_conv(x)
+    #     x = F.relu(x, inplace=True)
+    #     rpn_cls_score = self.rpn_cls_s4(x)
+    #     rpn_bbox_pred = self.rpn_reg_s4(x)
+    #     return rpn_cls_score, rpn_bbox_pred
+    #
+    # def forward_single_s8(self, x):
+    #     x = self.rpn_conv(x)
+    #     x = F.relu(x, inplace=True)
+    #     rpn_cls_score = self.rpn_cls_s8(x)
+    #     rpn_bbox_pred = self.rpn_reg_s8(x)
+    #     return rpn_cls_score, rpn_bbox_pred
+    #
+    # def forward_single_s16(self, x):
+    #     x = self.rpn_conv(x)
+    #     x = F.relu(x, inplace=True)
+    #     rpn_cls_score = self.rpn_cls_s16(x)
+    #     rpn_bbox_pred = self.rpn_reg_s16(x)
+    #     return rpn_cls_score, rpn_bbox_pred
 
 
     def loss(self, cls_scores, bbox_preds, gt_bboxes, img_metas, cfg):

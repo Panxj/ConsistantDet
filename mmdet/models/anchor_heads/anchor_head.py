@@ -84,23 +84,30 @@ class AnchorHead(nn.Module):
         return cls_score, bbox_pred
 
     def forward(self, feats):
-        rpn_out = []
-        rpn_out.append(multi_apply(self.forward_single_s0, feats))
-        rpn_out.append(multi_apply(self.forward_single_s2, feats[:-1]))
-        rpn_out.append(multi_apply(self.forward_single_s4, feats[:-2]))
-        rpn_out.append(multi_apply(self.forward_single_s8, feats[:-3]))
-        rpn_out.append(multi_apply(self.forward_single_s16, feats[:-4]))
+        # rpn_out = []
+        # rpn_out.append(multi_apply(self.forward_single, feats))
+        # rpn_out.append(multi_apply(self.forward_single_s2, feats[:-1]))
+        # rpn_out.append(multi_apply(self.forward_single_s4, feats[:-2]))
+        # rpn_out.append(multi_apply(self.forward_single_s8, feats[:-3]))
+        # rpn_out.append(multi_apply(self.forward_single_s16, feats[:-4]))
         # return multi_apply(self.forward_single, feats)
 
-        for i in range(len(rpn_out)):
-            num = len(rpn_out) - i
-            for j in range(1, num):
-                rpn_out[0][0][i] += rpn_out[j][0][i]
-                rpn_out[0][1][i] += rpn_out[j][1][i]
-            rpn_out[0][0][i] /= num
-            rpn_out[0][1][i] /= num
-
-        return rpn_out[0]
+        # for i in range(len(rpn_out)):
+        #     num = len(rpn_out) - i
+        #     for j in range(1, num):
+        #         rpn_out[0][0][i] += rpn_out[j][0][i]
+        #         rpn_out[0][1][i] += rpn_out[j][1][i]
+        #     rpn_out[0][0][i] /= num
+        #     rpn_out[0][1][i] /= num
+        #
+        # return rpn_out
+        rpn_cls_score, rpn_bbox_pred = multi_apply(self.forward_single, feats)
+        rpn_cls_score_s2, rpn_bbox_pred_s2 = multi_apply(self.forward_single_s2, feats[:-1])
+        num_lvl = len(rpn_cls_score_s2)
+        for i in range(num_lvl):
+            rpn_cls_score[i+1] = 0.6 * rpn_cls_score[i+1] + 0.4 * rpn_cls_score_s2[i]
+            rpn_bbox_pred[i+1] = 0.6 * rpn_bbox_pred[i+1] + 0.4 * rpn_bbox_pred_s2[i]
+        return rpn_cls_score, rpn_bbox_pred
 
     def get_anchors(self, featmap_sizes, img_metas):
         """Get anchors according to feature map sizes.
@@ -294,3 +301,8 @@ class AnchorHead(nn.Module):
         det_bboxes, det_labels = multiclass_nms(
             mlvl_bboxes, mlvl_scores, cfg.score_thr, cfg.nms, cfg.max_per_img)
         return det_bboxes, det_labels
+    # map the labels of higher anchors to those in lower levels
+    def map_to_lower_level(self, feat_sizes, bbox_targets_list, bbox_weights_list):
+        num_lvls = len(feat_sizes)
+        for i in range(num_lvls):
+            pass
