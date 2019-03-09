@@ -39,13 +39,21 @@ class SFA_FPN(nn.Module):
         self.end_level = end_level
         self.add_extra_convs = add_extra_convs
 
-        self.sfa_lateral_convs = nn.ModuleList()
+        self.sfa_l_convTs = nn.ModuleList()
         self.sfa_tp_convs = nn.ModuleList()
         self.lateral_convs = nn.ModuleList()
         self.fpn_convs = nn.ModuleList()
 
         for i in range(self.start_level, self.backbone_end_level):
-            sfa_tp_conv = ConvModule(
+            sfa_l_convT = nn.ConvTranspose2d(
+                in_channels[i],
+                in_channels[i],
+                3,
+                stride=2,
+                padding=1,
+                output_padding=1
+            )
+            sfa_td_conv = ConvModule(
                 in_channels[i+1],
                 in_channels[i],
                 1,
@@ -70,8 +78,10 @@ class SFA_FPN(nn.Module):
                 bias=self.with_bias,
                 activation=self.activation,
                 inplace=False)
-            if sfa_tp_conv is not None:
-                self.sfa_tp_convs.append(sfa_tp_conv)
+
+            self.sfa_l_convTs.append(sfa_l_convT)
+            if sfa_td_conv is not None:
+                self.sfa_tp_convs.append(sfa_td_conv)
             self.lateral_convs.append(l_conv)
             self.fpn_convs.append(fpn_conv)
 
@@ -108,7 +118,7 @@ class SFA_FPN(nn.Module):
         assert len(inputs) == len(self.in_channels)
 
         # build super feature
-        sfa_laterals = [F.interpolate(inputs[i + self.start_level], scale_factor=2.0, mode='nearest' )
+        sfa_laterals = [self.sfa_l_convTs[i](inputs[i + self.start_level])
                for i in range(len(inputs))]
 
         # build top-down path
