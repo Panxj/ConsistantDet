@@ -3,7 +3,7 @@ import numpy as np
 import torch
 
 
-def bbox2delta(proposals, gt, means=[0, 0, 0, 0], stds=[1, 1, 1, 1]):
+def bbox2delta(proposals, gt, means=[0, 0, 0, 0], stds=[1, 1, 1, 1], lvl_inds=None, strides=[4,8,16,32,64]):
     assert proposals.size() == gt.size()
 
     proposals = proposals.float()

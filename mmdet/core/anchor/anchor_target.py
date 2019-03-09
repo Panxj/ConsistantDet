@@ -34,11 +34,16 @@ def anchor_target(anchor_list,
 
     # anchor number of multi levels
     num_level_anchors = [anchors.size(0) for anchors in anchor_list[0]]
+    lvl_inds = torch.zeros(num_level_anchors[0]).view(-1,1)
+    for i in range(1,len(num_level_anchors)):
+        lvl_inds = torch.cat((lvl_inds,torch.ones(num_level_anchors[i]).view(-1,1) * i), 0)
     # concat all level anchors and flags to a single tensor
+    lvl_inds_list=[]
     for i in range(num_imgs):
         assert len(anchor_list[i]) == len(valid_flag_list[i])
         anchor_list[i] = torch.cat(anchor_list[i])
         valid_flag_list[i] = torch.cat(valid_flag_list[i])
+        lvl_inds_list.append(lvl_inds)
 
     # compute targets for each image
     if gt_labels_list is None:
@@ -56,7 +61,8 @@ def anchor_target(anchor_list,
          cfg=cfg,
          label_channels=label_channels,
          sampling=sampling,
-         unmap_outputs=unmap_outputs)
+         unmap_outputs=unmap_outputs,
+         lvl_inds = lvl_inds_list)
     # no valid anchors
     if any([labels is None for labels in all_labels]):
         return None
@@ -97,7 +103,8 @@ def anchor_target_single(flat_anchors,
                          cfg,
                          label_channels=1,
                          sampling=True,
-                         unmap_outputs=True):
+                         unmap_outputs=True,
+                         lvl_inds=None):
     inside_flags = anchor_inside_flags(flat_anchors, valid_flags,
                                        img_meta['img_shape'][:2],
                                        cfg.allowed_border)
@@ -105,7 +112,7 @@ def anchor_target_single(flat_anchors,
         return (None, ) * 6
     # assign gt and sample anchors
     anchors = flat_anchors[inside_flags, :]
-
+    lvl_inds = lvl_inds[inside_flags,:]
     if sampling:
         assign_result, sampling_result = assign_and_sample(
             anchors, gt_bboxes, None, None, cfg)
@@ -125,10 +132,11 @@ def anchor_target_single(flat_anchors,
 
     pos_inds = sampling_result.pos_inds
     neg_inds = sampling_result.neg_inds
+    pos_lvl_inds = lvl_inds[pos_inds,:]
     if len(pos_inds) > 0:
         pos_bbox_targets = bbox2delta(sampling_result.pos_bboxes,
                                       sampling_result.pos_gt_bboxes,
-                                      target_means, target_stds)
+                                      target_means, target_stds, lvl_inds=pos_lvl_inds)
         bbox_targets[pos_inds, :] = pos_bbox_targets
         bbox_weights[pos_inds, :] = 1.0
         if gt_labels is None:
