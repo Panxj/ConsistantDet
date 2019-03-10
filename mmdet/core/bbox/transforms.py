@@ -48,7 +48,8 @@ def delta2bbox(rois,
                means=[0, 0, 0, 0],
                stds=[1, 1, 1, 1],
                max_shape=None,
-               wh_ratio_clip=16 / 1000):
+               wh_ratio_clip=16 / 1000,
+               stride=None):
     means = deltas.new_tensor(means).repeat(1, deltas.size(1) // 4)
     stds = deltas.new_tensor(stds).repeat(1, deltas.size(1) // 4)
     denorm_deltas = deltas * stds + means
@@ -63,8 +64,13 @@ def delta2bbox(rois,
     py = ((rois[:, 1] + rois[:, 3]) * 0.5).unsqueeze(1).expand_as(dy)
     pw = (rois[:, 2] - rois[:, 0] + 1.0).unsqueeze(1).expand_as(dw)
     ph = (rois[:, 3] - rois[:, 1] + 1.0).unsqueeze(1).expand_as(dh)
-    gw = pw * dw.exp()
-    gh = ph * dh.exp()
+    # Quantification for dx, dy, dw, dh
+    dx = torch.round(dx / stride * pw) * stride / pw
+    dy = torch.round(dy / stride * pw) * stride / ph
+    dw = torch.round(dw.exp() / stride * pw) * stride / pw
+    dh = torch.round(dh.exp() / stride * ph) * stride / ph
+    gw = pw * dw
+    gh = ph * dh
     gx = torch.addcmul(px, 1, pw, dx)  # gx = px + pw * dx
     gy = torch.addcmul(py, 1, ph, dy)  # gy = py + ph * dy
     x1 = gx - gw * 0.5 + 0.5

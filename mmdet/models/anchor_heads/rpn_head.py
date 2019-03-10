@@ -47,7 +47,8 @@ class RPNHead(AnchorHead):
                           img_shape,
                           scale_factor,
                           cfg,
-                          rescale=False):
+                          rescale=False,
+                          strides=[4,8,16,32,64]):
         mlvl_proposals = []
         for idx in range(len(cls_scores)):
             rpn_cls_score = cls_scores[idx]
@@ -68,7 +69,7 @@ class RPNHead(AnchorHead):
                 anchors = anchors[topk_inds, :]
                 scores = scores[topk_inds]
             proposals = delta2bbox(anchors, rpn_bbox_pred, self.target_means,
-                                   self.target_stds, img_shape)
+                                   self.target_stds, img_shape, stride=strides[idx])
             if cfg.min_bbox_size > 0:
                 w = proposals[:, 2] - proposals[:, 0] + 1
                 h = proposals[:, 3] - proposals[:, 1] + 1
