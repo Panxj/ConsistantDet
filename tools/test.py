@@ -1,5 +1,6 @@
 import argparse
-
+import sys 
+sys.path.append('/home/xingjia/Projects/BoostingDet/QuantDet')
 import torch
 import mmcv
 from mmcv.runner import load_checkpoint, parallel_test, obj_from_dict

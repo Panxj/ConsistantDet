@@ -1,5 +1,6 @@
 from __future__ import division
-
+import sys 
+sys.path.append('/home/xingjia/Projects/BoostingDet/QuantDet')
 import argparse
 from mmcv import Config
 

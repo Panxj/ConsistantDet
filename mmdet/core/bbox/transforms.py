@@ -18,11 +18,23 @@ def bbox2delta(proposals, gt, means=[0, 0, 0, 0], stds=[1, 1, 1, 1], lvl_inds=No
     gw = gt[..., 2] - gt[..., 0] + 1.0
     gh = gt[..., 3] - gt[..., 1] + 1.0
 
-    dx = (gx - px) / pw
-    dy = (gy - py) / ph
-    dw = torch.log(gw / pw)
-    dh = torch.log(gh / ph)
-    deltas = torch.stack([dx, dy, dw, dh], dim=-1)
+    lvls = torch.unique(lvl_inds)
+    deltas_list = []
+    for lvl in lvls:
+        inds = torch.nonzero(lvl_inds == lvl).squeeze()
+        lvl = int(lvl)
+        dx_lvl = torch.floor((gx[inds] - px[inds]) / strides[lvl]) * strides[lvl] / pw[inds]
+        dy_lvl = torch.floor((gy[inds] - py[inds]) / strides[lvl]) * strides[lvl] / ph[inds]
+        dw_lvl = torch.log(torch.floor(gw[inds] / strides[lvl]) * strides[lvl] / pw[inds])
+        dh_lvl = torch.log(torch.floor(gh[inds] / strides[lvl]) * strides[lvl] / ph[inds])
+        deltas_lvl = torch.stack([dx_lvl, dy_lvl, dw_lvl, dh_lvl], dim=-1)
+        deltas_list.append(deltas_lvl.view(-1,deltas_lvl.size(-1)))
+    deltas = torch.cat(deltas_list, dim=0)
+    # dx = (gx - px) / pw
+    # dy = (gy - py) / ph
+    # dw = torch.log(gw / pw)
+    # dh = torch.log(gh / ph)
+    # deltas = torch.stack([dx, dy, dw, dh], dim=-1)
 
     means = deltas.new_tensor(means).unsqueeze(0)
     stds = deltas.new_tensor(stds).unsqueeze(0)
