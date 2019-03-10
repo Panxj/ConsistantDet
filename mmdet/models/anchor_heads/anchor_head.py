@@ -3,6 +3,7 @@ from __future__ import division
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from mmcv.cnn import normal_init
 
 from mmdet.core import (AnchorGenerator, anchor_target, delta2bbox,
@@ -90,7 +91,7 @@ class AnchorHead(nn.Module):
         # rpn_out.append(multi_apply(self.forward_single_s4, feats[:-2]))
         # rpn_out.append(multi_apply(self.forward_single_s8, feats[:-3]))
         # rpn_out.append(multi_apply(self.forward_single_s16, feats[:-4]))
-        # return multi_apply(self.forward_single, feats)
+        return multi_apply(self.forward_single, feats)
 
         # for i in range(len(rpn_out)):
         #     num = len(rpn_out) - i
@@ -101,13 +102,13 @@ class AnchorHead(nn.Module):
         #     rpn_out[0][1][i] /= num
         #
         # return rpn_out
-        rpn_cls_score, rpn_bbox_pred = multi_apply(self.forward_single, feats)
-        rpn_cls_score_s2, rpn_bbox_pred_s2 = multi_apply(self.forward_single_s2, feats[:-1])
-        num_lvl = len(rpn_cls_score_s2)
-        for i in range(num_lvl):
-            rpn_cls_score[i+1] = 0.6 * rpn_cls_score[i+1] + 0.4 * rpn_cls_score_s2[i]
-            rpn_bbox_pred[i+1] = 0.6 * rpn_bbox_pred[i+1] + 0.4 * rpn_bbox_pred_s2[i]
-        return rpn_cls_score, rpn_bbox_pred
+        # rpn_cls_score, rpn_bbox_pred = multi_apply(self.forward_single, feats)
+        # rpn_cls_score_s2, rpn_bbox_pred_s2 = multi_apply(self.forward_single_s2, feats[:-1])
+        # num_lvl = len(rpn_cls_score_s2)
+        # for i in range(num_lvl):
+        #     rpn_cls_score[i+1] = 0.6 * rpn_cls_score[i+1] + 0.4 * rpn_cls_score_s2[i]
+        #     rpn_bbox_pred[i+1] = 0.6 * rpn_bbox_pred[i+1] + 0.4 * rpn_bbox_pred_s2[i]
+        # return rpn_cls_score, rpn_bbox_pred
 
     def get_anchors(self, featmap_sizes, img_metas):
         """Get anchors according to feature map sizes.
@@ -218,6 +219,8 @@ class AnchorHead(nn.Module):
          num_total_pos, num_total_neg) = cls_reg_targets
         num_total_samples = (num_total_pos if self.use_focal_loss else
                              num_total_pos + num_total_neg)
+        bbox_targets_list = self.merge_lower_level(featmap_sizes, bbox_targets_list)
+        bbox_weights_list = self.merge_lower_level(featmap_sizes, bbox_weights_list)
         losses_cls, losses_reg = multi_apply(
             self.loss_single,
             cls_scores,
@@ -301,8 +304,37 @@ class AnchorHead(nn.Module):
         det_bboxes, det_labels = multiclass_nms(
             mlvl_bboxes, mlvl_scores, cfg.score_thr, cfg.nms, cfg.max_per_img)
         return det_bboxes, det_labels
+
     # map the labels of higher anchors to those in lower levels
-    def map_to_lower_level(self, feat_sizes, bbox_targets_list, bbox_weights_list):
+    def merge_lower_level(self, feat_sizes, bbox_targets_list):
         num_lvls = len(feat_sizes)
-        for i in range(num_lvls):
-            pass
+        size_lvls =[]
+        new_bbox_targets_list = []
+        merge_bbox_targets_list = []
+        for i in range(num_lvls-1, 0, -1):
+            bbox_targets_i = bbox_targets_list[i]
+            size_lvls.append(bbox_targets_i.size(1))
+            o_size = bbox_targets_i.size()
+            t_size = (o_size[0],feat_sizes[i][0], feat_sizes[i][1], -1)
+            bbox_targets_i_fea = bbox_targets_i.view(*t_size).permute(0, 3, 1,2)
+            for j in range(i-1, -1, -1):
+                scale = 2**(i-j)
+                bbox_targets_ij = F.interpolate(bbox_targets_i_fea, scale_factor=scale, mode='nearest')
+                bbox_targets_ij = bbox_targets_ij[:,:,:feat_sizes[j][0], :feat_sizes[j][1]]
+                bbox_targets_ij = bbox_targets_ij.permute(0, 2, 3, 1).reshape(bbox_targets_ij.size(0), -1, 4)
+                bbox_targets_i = torch.cat((bbox_targets_ij,bbox_targets_i), dim = 1)
+            merge_bbox_targets_list.append(bbox_targets_i)
+        merge_bbox_targets_list.append(bbox_targets_list[0])
+        size_lvls.append(bbox_targets_list[0].size(1))
+        bbox_targets_merge = merge_bbox_targets_list[0]
+        for i in range(1, num_lvls):
+            new_bbox_targets_i = merge_bbox_targets_list[i]
+            size_new_bbox_targets = new_bbox_targets_i.size(1)
+            bbox_targets_merge[:,:size_new_bbox_targets,:] = new_bbox_targets_i
+
+        start = 0
+        for i in range(num_lvls-1, -1,-1):
+            new_bbox_targets_list.append(bbox_targets_merge[:,start:start+size_lvls[i], :])
+            start += size_lvls[i]
+
+        return new_bbox_targets_list

@@ -37,12 +37,12 @@ class RPNHead(AnchorHead):
     def init_weights(self):
         normal_init(self.rpn_conv, std=0.01)
         normal_init(self.rpn_cls, std=0.01)
-        normal_init(self.rpn_reg_s2, std=0.01)
+        # normal_init(self.rpn_reg_s2, std=0.01)
         # normal_init(self.rpn_cls_s4, std=0.01)
         # normal_init(self.rpn_reg_s8, std=0.01)
         # normal_init(self.rpn_cls_s16, std=0.01)
         normal_init(self.rpn_reg, std=0.01)
-        normal_init(self.rpn_cls_s2, std=0.01)
+        # normal_init(self.rpn_cls_s2, std=0.01)
         # normal_init(self.rpn_reg_s4, std=0.01)
         # normal_init(self.rpn_cls_s8, std=0.01)
         # normal_init(self.rpn_reg_s16, std=0.01)
@@ -53,12 +53,12 @@ class RPNHead(AnchorHead):
         rpn_cls_score = self.rpn_cls(x)
         rpn_bbox_pred = self.rpn_reg(x)
         return rpn_cls_score, rpn_bbox_pred
-    def forward_single_s2(self, x):
-        x = self.rpn_conv(x)
-        x = F.relu(x, inplace=True)
-        rpn_cls_score = self.rpn_cls_s2(x)
-        rpn_bbox_pred = self.rpn_reg_s2(x)
-        return rpn_cls_score, rpn_bbox_pred
+    # def forward_single_s2(self, x):
+    #     x = self.rpn_conv(x)
+    #     x = F.relu(x, inplace=True)
+    #     rpn_cls_score = self.rpn_cls_s2(x)
+    #     rpn_bbox_pred = self.rpn_reg_s2(x)
+    #     return rpn_cls_score, rpn_bbox_pred
     #
     # def forward_single_s4(self, x):
     #     x = self.rpn_conv(x)
