@@ -31,7 +31,6 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
             self.neck = builder.build_neck(neck)
         else:
             raise NotImplementedError
-
         if rpn_head is not None:
             self.rpn_head = builder.build_head(rpn_head)
 
@@ -72,6 +71,9 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
             self.mask_roi_extractor.init_weights()
             self.mask_head.init_weights()
 
+    def extract_certain_feat(self,img, stage=1):
+        x = self.backbone(img, stage=stage)
+        return x
     def extract_feat(self, img):
         x = self.backbone(img)
         if self.with_neck:
@@ -86,13 +88,21 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
                       gt_labels,
                       gt_masks=None,
                       proposals=None):
-        down_img_h, down_img_w = img.size(2)//2, img.size(3)//2
-        down_img_h = int(np.ceil(down_img_h / 32) * 32)
-        down_img_w = int(np.ceil(down_img_w / 32) * 32)
-        down_img = F.interpolate(img, size=(down_img_h, down_img_w) ,mode='bilinear', align_corners=True)
-        x = self.extract_feat(down_img)
-
+        if hasattr(self.neck,'with_sfa'):
+            down_img_h, down_img_w = img.size(2)//2, img.size(3)//2
+            down_img_h = int(np.ceil(down_img_h / 32) * 32)
+            down_img_w = int(np.ceil(down_img_w / 32) * 32)
+            down_img = F.interpolate(img, size=(down_img_h, down_img_w) ,mode='bilinear', align_corners=True)
+            x = self.extract_feat(down_img)
+            if self.neck.with_sfa_loss:
+                x_stage = self.extract_certain_feat(img, stage=1)
+        else:
+            x = self.extract_feat(img)
         losses = dict()
+
+        if hasattr(self.neck, 'with_sfa') and self.neck.with_sfa_loss:
+            loss_sfa = self.neck.loss(x[0], x_stage, stage=1)
+            losses.update(loss_sfa)
 
         # RPN forward and loss
         if self.with_rpn:
@@ -160,8 +170,12 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
     def simple_test(self, img, img_meta, proposals=None, rescale=False):
         """Test without augmentation."""
         assert self.with_bbox, "Bbox head must be implemented."
+        down_img_h, down_img_w = img.size(2) // 2, img.size(3) // 2
+        down_img_h = int(np.ceil(down_img_h / 32) * 32)
+        down_img_w = int(np.ceil(down_img_w / 32) * 32)
+        down_img = F.interpolate(img, size=(down_img_h, down_img_w), mode='bilinear', align_corners=True)
 
-        x = self.extract_feat(img)
+        x = self.extract_feat(down_img)
 
         proposal_list = self.simple_test_rpn(
             x, img_meta, self.test_cfg.rpn) if proposals is None else proposals

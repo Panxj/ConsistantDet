@@ -17,7 +17,8 @@ class SFA_FPN(nn.Module):
                  end_level=-1,
                  add_extra_convs=False,
                  normalize=None,
-                 activation=None):
+                 activation=None,
+                 with_sfa_loss=False):
         super(SFA_FPN, self).__init__()
         assert isinstance(in_channels, list)
         self.in_channels = in_channels
@@ -26,7 +27,8 @@ class SFA_FPN(nn.Module):
         self.num_outs = num_outs
         self.activation = activation
         self.with_bias = normalize is None
-
+        self.with_sfa = True
+        self.with_sfa_loss = with_sfa_loss
         if end_level == -1:
             self.backbone_end_level = self.num_ins
             assert num_outs >= self.num_ins - start_level
@@ -108,6 +110,10 @@ class SFA_FPN(nn.Module):
                     inplace=False)
                 self.fpn_convs.append(extra_fpn_conv)
 
+        self.sfa_conv_top = nn.Sequential(
+            nn.Conv2d(in_channels[0], in_channels[0]//4, 3, padding=1),
+            nn.BatchNorm2d(in_channels[0]//4),
+            nn.ReLU(inplace=True))
     # default init_weights for conv(msra) and norm in ConvModule
     def init_weights(self):
         for m in self.modules():
@@ -159,3 +165,13 @@ class SFA_FPN(nn.Module):
                     # BUG: we should add relu before each extra conv
                     outs.append(self.fpn_convs[i](outs[-1]))
         return tuple(outs)
+
+    def loss(self, up_x, large_x, stage=1):
+        losses = dict()
+        if stage == 1:
+            up_x = self.sfa_conv_top(up_x)
+        assert isinstance(large_x,list)
+        for l_x in large_x:
+            l_feat_h, l_feat_w = l_x.size(2), l_x.size(3)
+            losses['sfa_loss'] = F.mse_loss(up_x[:,:,:l_feat_h,:l_feat_w], l_x, reduction='mean')
+        return losses

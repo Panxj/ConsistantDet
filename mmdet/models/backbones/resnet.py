@@ -429,11 +429,13 @@ class ResNet(nn.Module):
         else:
             raise TypeError('pretrained must be a str or None')
 
-    def forward(self, x):
+    def forward(self, x, stage=None):
         x = self.conv1(x)
         x = self.norm1(x)
         x = self.relu(x)
         x = self.maxpool(x)
+        if stage is not None and stage == 1:
+            return [x]
         outs = []
         for i, layer_name in enumerate(self.res_layers):
             res_layer = getattr(self, layer_name)
