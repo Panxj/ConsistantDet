@@ -236,6 +236,7 @@ class AnchorHead(nn.Module):
     def get_bboxes(self, cls_scores, bbox_preds, img_metas, cfg,
                    rescale=False):
         assert len(cls_scores) == len(bbox_preds)
+        bbox_preds = self.merge_to_higher_lvl_test(bbox_preds)
         num_levels = len(cls_scores)
 
         mlvl_anchors = [
@@ -338,3 +339,20 @@ class AnchorHead(nn.Module):
             start += size_lvls[i]
 
         return new_bbox_targets_list
+
+    def merge_to_higher_lvl_test(self, bbox_preds):
+        num_lvl = len(bbox_preds)
+        new_bbox_preds = []
+        for lvl in range(num_lvl-1, 0, -1):
+            new_bbox_pred_lvl = bbox_preds[lvl]
+
+            for lvl_in in range(lvl-1, -1, -1):
+                scale = 2**(lvl-lvl_in)
+                bbox_pred_lvl_in = bbox_preds[lvl_in]
+                bbox_pred_lvl_ds = F.avg_pool2d(bbox_pred_lvl_in, scale, stride=scale)
+                pred_h, pred_w = bbox_pred_lvl_ds.size(2), bbox_pred_lvl_ds.size(3)
+                new_bbox_pred_lvl[:, :, :pred_h, :pred_w] += bbox_pred_lvl_ds
+            new_bbox_pred_lvl /= (lvl+1)
+            new_bbox_preds.insert(0,new_bbox_pred_lvl)
+        new_bbox_preds.insert(0, bbox_preds[0])
+        return new_bbox_preds
