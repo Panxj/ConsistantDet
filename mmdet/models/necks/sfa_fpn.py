@@ -23,7 +23,8 @@ class SFA_FPN(nn.Module):
                  with_orig =False,
                  only_sfa_result=False,
                  only_orig_result=False,
-                 segm_out_flag=0):
+                 segm_out_flag=0,
+                 with_rpn_clip=False):
         super(SFA_FPN, self).__init__()
         assert isinstance(in_channels, list)
         self.in_channels = in_channels
@@ -38,6 +39,7 @@ class SFA_FPN(nn.Module):
         self.only_sfa_result = only_sfa_result
         self.only_orig_result = only_orig_result
         self.segm_out_flag = segm_out_flag
+        self.with_rpn_clip = with_rpn_clip
         if end_level == -1:
             self.backbone_end_level = self.num_ins
             assert num_outs >= self.num_ins - start_level
@@ -214,16 +216,22 @@ class SFA_FPN(nn.Module):
                 losses['sfa_loss'] = F.mse_loss(up_x[:,:,:l_feat_h,:l_feat_w], l_x, reduction='mean')
             else:
                 loss = 0
+                avg_size = proposal.size(0)
                 proposal[:,1:] = (proposal[:,1:]/stride).round()
                 proposal = proposal.int()
-                proposal[:,2] = proposal[:,2].clamp(0, l_feat_h)
-                proposal[:,3] = proposal[:,3].clamp(0, l_feat_w)
+                proposal[:, 1] = proposal[:, 1].clamp(0, l_feat_h - 1)
+                proposal[:, 3] = proposal[:, 3].clamp(0, l_feat_h - 1)
+                proposal[:, 2] = proposal[:, 2].clamp(0, l_feat_w - 1)
+                proposal[:, 4] = proposal[:, 4].clamp(0, l_feat_w - 1)
                 num_imgs = l_x.size(0)
-                for j in range(num_imgs):
-                    inds = torch.nonzero(proposal[:,0] == j).squeeze()
+                for i in range(num_imgs):
+                    inds = torch.nonzero(proposal[:,0] == i).squeeze()
                     proposals = proposal[inds,:][:,1:]
-                    loss += F.mse_loss(up_x[j][:,proposals[:,0]:proposals[:,2],proposals[:,1]:proposals[:,3]],
-                                       l_x[j][:,proposals[:,0]:proposals[:,2],proposals[:,1]:proposals[:,3]],
-                                       reduction='mean')
-                    loss /= num_imgs
+                    for j in range(proposals.size(0)):
+                        loss += F.mse_loss(up_x[i][:, proposals[j,0]:(proposals[j,2]+1),
+                                           proposals[j,1]:(proposals[j,3]+1)],
+                                           l_x[i][:, proposals[j,0]:(proposals[j,2]+1),
+                                           proposals[j,1]:(proposals[j,3]+1)],
+                                           reduction='mean')
+                loss /= avg_size
         return losses
