@@ -50,6 +50,43 @@ class BBoxTestMixin(object):
             cfg=rcnn_test_cfg)
         return det_bboxes, det_labels
 
+    def simple_test_bboxes_for_sfa_with_orig(self,
+                           x_sfa,
+                           x_orig,
+                           img_meta_sfa,
+                           img_meta_orig,
+                           proposals_sfa,
+                           proposals_orig,
+                           rcnn_test_cfg,
+                           rescale=False):
+        """Test only det bboxes without augmentation."""
+        rois_sfa = bbox2roi(proposals_sfa)
+        rois_orig = bbox2roi(proposals_orig)
+        roi_feats_sfa = self.bbox_roi_extractor(
+            x_sfa[:len(self.bbox_roi_extractor.featmap_strides)], rois_sfa)
+        roi_feats_orig = self.bbox_roi_extractor(
+            x_orig[:len(self.bbox_roi_extractor.featmap_strides)], rois_orig)
+        cls_score_sfa, bbox_pred_sfa = self.bbox_head(roi_feats_sfa)
+        cls_score_orig, bbox_pred_orig = self.bbox_head(roi_feats_orig)
+        img_shape_sfa = img_meta_sfa[0]['img_shape']
+        scale_factor_sfa = img_meta_sfa[0]['scale_factor']
+        img_shape_orig = img_meta_orig[0]['img_shape']
+        scale_factor_orig = img_meta_orig[0]['scale_factor']
+        det_bboxes, det_labels = self.bbox_head.get_det_bboxes_for_sfa_with_orig(
+            rois_sfa,
+            rois_orig,
+            cls_score_sfa,
+            bbox_pred_sfa,
+            cls_score_orig,
+            bbox_pred_orig,
+            img_shape_sfa,
+            scale_factor_sfa,
+            img_shape_orig,
+            scale_factor_orig,
+            rescale=rescale,
+            cfg=rcnn_test_cfg)
+        return det_bboxes, det_labels
+
     def aug_test_bboxes(self, feats, img_metas, proposal_list, rcnn_test_cfg):
         aug_bboxes = []
         aug_scores = []
@@ -111,6 +148,60 @@ class MaskTestMixin(object):
                 mask_pred, _bboxes, det_labels, self.test_cfg.rcnn, ori_shape,
                 scale_factor, rescale)
         return segm_result
+
+    def simple_test_mask_for_sfa_with_orig(self,
+                         x_sfa,
+                         x_orig,
+                         img_meta_sfa,
+                         img_meta_orig,
+                         det_bboxes,
+                         det_labels,
+                         rescale=False,
+                         out_flag=0):
+        # image shape of the first image in the batch (only one)
+        ori_shape_sfa = img_meta_sfa[0]['ori_shape']
+        scale_factor_sfa = img_meta_sfa[0]['scale_factor']
+        ori_shape_orig = img_meta_orig[0]['ori_shape']
+        scale_factor_orig = img_meta_orig[0]['scale_factor']
+        if det_bboxes.shape[0] == 0:
+            segm_result = [[] for _ in range(self.mask_head.num_classes - 1)]
+        else:
+            # if det_bboxes is rescaled to the original image size, we need to
+            # rescale it back to the testing scale to obtain RoIs.
+            # for sfa
+            _bboxes_sfa = (det_bboxes[:, :4] * scale_factor_sfa
+                       if rescale else det_bboxes)
+            mask_rois_sfa = bbox2roi([_bboxes_sfa])
+            mask_feats_sfa = self.mask_roi_extractor(
+                x_sfa[:len(self.mask_roi_extractor.featmap_strides)], mask_rois_sfa)
+            mask_pred_sfa = self.mask_head(mask_feats_sfa)
+
+            # for orig
+            _bboxes_orig = (det_bboxes[:, :4] * scale_factor_orig
+                           if rescale else det_bboxes)
+            mask_rois_orig = bbox2roi([_bboxes_orig])
+            mask_feats_orig = self.mask_roi_extractor(
+                x_orig[:len(self.mask_roi_extractor.featmap_strides)], mask_rois_orig)
+            mask_pred_orig = self.mask_head(mask_feats_orig)
+
+            segm_result_sfa = self.mask_head.get_seg_masks(
+                mask_pred_sfa, _bboxes_sfa, det_labels, self.test_cfg.rcnn, ori_shape_sfa,
+                scale_factor_sfa, rescale)
+            segm_result_orig = self.mask_head.get_seg_masks(
+                mask_pred_orig, _bboxes_orig, det_labels, self.test_cfg.rcnn, ori_shape_orig,
+                scale_factor_orig, rescale)
+            if out_flag == 0:
+                segm_result = []
+                for i in range(len(segm_result_sfa)):
+                    segm_result.append(segm_result_sfa[i] + segm_result_orig[i])
+                return segm_result
+            elif out_flag == 1:
+                return segm_result_orig
+            elif out_flag == 2:
+                return segm_result_sfa
+            else:
+                raise Exception('Not right out_flag')
+
 
     def aug_test_mask(self, feats, img_metas, det_bboxes, det_labels):
         if det_bboxes.shape[0] == 0:

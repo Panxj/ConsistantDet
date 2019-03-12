@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from mmcv.cnn import xavier_init
@@ -21,7 +22,8 @@ class SFA_FPN(nn.Module):
                  with_sfa_loss=False,
                  with_orig =False,
                  only_sfa_result=False,
-                 only_orig_result=False):
+                 only_orig_result=False,
+                 segm_out_flag=0):
         super(SFA_FPN, self).__init__()
         assert isinstance(in_channels, list)
         self.in_channels = in_channels
@@ -35,6 +37,7 @@ class SFA_FPN(nn.Module):
         self.with_orig = with_orig
         self.only_sfa_result = only_sfa_result
         self.only_orig_result = only_orig_result
+        self.segm_out_flag = segm_out_flag
         if end_level == -1:
             self.backbone_end_level = self.num_ins
             assert num_outs >= self.num_ins - start_level
@@ -200,7 +203,7 @@ class SFA_FPN(nn.Module):
             final_outs.append(outs)
         return tuple(final_outs)
 
-    def loss(self, up_x, large_x, stage=1, proposal=None):
+    def loss(self, up_x, large_x, stage=1, proposal=None,stride=4):
         losses = dict()
         if stage == 1:
             up_x = self.sfa_conv_top(up_x)
@@ -210,5 +213,17 @@ class SFA_FPN(nn.Module):
             if proposal is None:
                 losses['sfa_loss'] = F.mse_loss(up_x[:,:,:l_feat_h,:l_feat_w], l_x, reduction='mean')
             else:
-                pass
+                loss = 0
+                proposal[:,1:] = (proposal[:,1:]/stride).round()
+                proposal = proposal.int()
+                proposal[:,2] = proposal[:,2].clamp(0, l_feat_h)
+                proposal[:,3] = proposal[:,3].clamp(0, l_feat_w)
+                num_imgs = l_x.size(0)
+                for j in range(num_imgs):
+                    inds = torch.nonzero(proposal[:,0] == j).squeeze()
+                    proposals = proposal[inds,:][:,1:]
+                    loss += F.mse_loss(up_x[j][:,proposals[:,0]:proposals[:,2],proposals[:,1]:proposals[:,3]],
+                                       l_x[j][:,proposals[:,0]:proposals[:,2],proposals[:,1]:proposals[:,3]],
+                                       reduction='mean')
+                    loss /= num_imgs
         return losses

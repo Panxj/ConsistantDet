@@ -132,6 +132,56 @@ class BBoxHead(nn.Module):
 
             return det_bboxes, det_labels
 
+    def get_det_bboxes_for_sfa_with_orig(self,
+                                         rois_sfa,
+                                         rois_orig,
+                                         cls_score_sfa,
+                                         bbox_pred_sfa,
+                                         cls_score_orig,
+                                         bbox_pred_orig,
+                                         img_shape_sfa,
+                                         scale_factor_sfa,
+                                         img_shape_orig,
+                                         scale_factor_orig,
+                                         rescale=False,
+                                         cfg=None):
+        if isinstance(cls_score_sfa, list):
+            cls_score_sfa = sum(cls_score_sfa) / float(len(cls_score_sfa))
+        scores_sfa = F.softmax(cls_score_sfa, dim=1) if cls_score_sfa is not None else None
+
+        if bbox_pred_sfa is not None:
+            bboxes_sfa = delta2bbox(rois_sfa[:, 1:], bbox_pred_sfa, self.target_means,
+                                self.target_stds, img_shape_sfa)
+        else:
+            bboxes_sfa = rois_sfa[:, 1:]
+            # TODO: add clip here
+        # for orig
+        if isinstance(cls_score_orig, list):
+            cls_score_orig = sum(cls_score_orig) / float(len(cls_score_orig))
+        scores_orig = F.softmax(cls_score_orig, dim=1) if cls_score_orig is not None else None
+
+        if bbox_pred_orig is not None:
+            bboxes_orig = delta2bbox(rois_orig[:, 1:], bbox_pred_orig, self.target_means,
+                                self.target_stds, img_shape_orig)
+        else:
+            bboxes_orig = rois_orig[:, 1:]
+            # TODO: add clip here
+
+        if rescale:
+            bboxes_sfa /= scale_factor_sfa
+            bboxes_orig /= scale_factor_orig
+
+        bboxes = torch.cat((bboxes_sfa, bboxes_orig), dim=0)
+        scores = torch.cat((scores_sfa, scores_orig), dim=0)
+
+        if cfg is None:
+            return bboxes, scores
+        else:
+            det_bboxes, det_labels = multiclass_nms(
+                bboxes, scores, cfg.score_thr, cfg.nms, cfg.max_per_img)
+
+            return det_bboxes, det_labels
+
     def refine_bboxes(self, rois, labels, bbox_preds, pos_is_gts, img_metas):
         """Refine bboxes during training.
 
