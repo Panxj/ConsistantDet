@@ -88,3 +88,7 @@ class ConvModule(nn.Module):
                 x = self.activate(x)
             x = self.conv(x)
         return x
+    def val(self):
+        for m in self.modules():
+            if isinstance(m, nn.BatchNorm2d):
+                m.eval()

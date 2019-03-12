@@ -170,12 +170,15 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
     def simple_test(self, img, img_meta, proposals=None, rescale=False):
         """Test without augmentation."""
         assert self.with_bbox, "Bbox head must be implemented."
-        down_img_h, down_img_w = img.size(2) // 2, img.size(3) // 2
-        down_img_h = int(np.ceil(down_img_h / 32) * 32)
-        down_img_w = int(np.ceil(down_img_w / 32) * 32)
-        down_img = F.interpolate(img, size=(down_img_h, down_img_w), mode='bilinear', align_corners=True)
+        if hasattr(self.neck, 'with_sfa'):
+            down_img_h, down_img_w = img.size(2) // 2, img.size(3) // 2
+            down_img_h = int(np.ceil(down_img_h / 32) * 32)
+            down_img_w = int(np.ceil(down_img_w / 32) * 32)
+            down_img = F.interpolate(img, size=(down_img_h, down_img_w), mode='bilinear', align_corners=True)
 
-        x = self.extract_feat(down_img)
+            x = self.extract_feat(down_img)
+        else:
+            x = self.extract_feat(img)
 
         proposal_list = self.simple_test_rpn(
             x, img_meta, self.test_cfg.rpn) if proposals is None else proposals

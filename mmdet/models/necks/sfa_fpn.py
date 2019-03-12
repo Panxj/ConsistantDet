@@ -110,10 +110,13 @@ class SFA_FPN(nn.Module):
                     inplace=False)
                 self.fpn_convs.append(extra_fpn_conv)
 
-        self.sfa_conv_top = nn.Sequential(
-            nn.Conv2d(in_channels[0], in_channels[0]//4, 3, padding=1),
-            nn.BatchNorm2d(in_channels[0]//4),
-            nn.ReLU(inplace=True))
+        self.sfa_conv_top = ConvModule(
+            in_channels[0],
+            in_channels[0]//4,
+            1,
+            bias=False,
+            normalize=dict(type='BN', frozen=False))
+
     # default init_weights for conv(msra) and norm in ConvModule
     def init_weights(self):
         for m in self.modules():
