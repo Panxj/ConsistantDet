@@ -18,7 +18,10 @@ class SFA_FPN(nn.Module):
                  add_extra_convs=False,
                  normalize=None,
                  activation=None,
-                 with_sfa_loss=False):
+                 with_sfa_loss=False,
+                 with_orig =False,
+                 only_sfa_result=False,
+                 only_orig_result=False):
         super(SFA_FPN, self).__init__()
         assert isinstance(in_channels, list)
         self.in_channels = in_channels
@@ -29,6 +32,9 @@ class SFA_FPN(nn.Module):
         self.with_bias = normalize is None
         self.with_sfa = True
         self.with_sfa_loss = with_sfa_loss
+        self.with_orig = with_orig
+        self.only_sfa_result = only_sfa_result
+        self.only_orig_result = only_orig_result
         if end_level == -1:
             self.backbone_end_level = self.num_ins
             assert num_outs >= self.num_ins - start_level
@@ -154,25 +160,27 @@ class SFA_FPN(nn.Module):
         sfa_outs = [
             self.fpn_convs[i](sfa_laterals_2[i]) for i in range(used_backbone_levels)
         ]
+        if self.with_orig:
+            # build laterals
+            orig_laterals = [
+                lateral_conv(inputs[i + self.start_level])
+                for i, lateral_conv in enumerate(self.lateral_convs)
+            ]
 
-        # build laterals
-        orig_laterals = [
-            lateral_conv(inputs[i + self.start_level])
-            for i, lateral_conv in enumerate(self.lateral_convs)
-        ]
+            # build top-down path
+            used_backbone_levels = len(orig_laterals)
+            for i in range(used_backbone_levels - 1, 0, -1):
+                orig_laterals[i - 1] += F.interpolate(
+                    orig_laterals[i], scale_factor=2, mode='nearest')
 
-        # build top-down path
-        used_backbone_levels = len(orig_laterals)
-        for i in range(used_backbone_levels - 1, 0, -1):
-            orig_laterals[i - 1] += F.interpolate(
-                orig_laterals[i], scale_factor=2, mode='nearest')
-
-        # build outputs
-        # part 1: from original levels
-        orig_outs = [
-            self.fpn_convs[i](orig_laterals[i]) for i in range(used_backbone_levels)
-        ]
-        outs_list =[orig_outs, sfa_outs]
+            # build outputs
+            # part 1: from original levels
+            orig_outs = [
+                self.fpn_convs[i](orig_laterals[i]) for i in range(used_backbone_levels)
+            ]
+            outs_list =[sfa_outs,orig_outs]
+        else:
+            outs_list = [sfa_outs]
         final_outs = []
         for outs in outs_list:
             # part 2: add extra levels
@@ -192,12 +200,15 @@ class SFA_FPN(nn.Module):
             final_outs.append(outs)
         return tuple(final_outs)
 
-    def loss(self, up_x, large_x, stage=1):
+    def loss(self, up_x, large_x, stage=1, proposal=None):
         losses = dict()
         if stage == 1:
             up_x = self.sfa_conv_top(up_x)
         assert isinstance(large_x,list)
         for l_x in large_x:
             l_feat_h, l_feat_w = l_x.size(2), l_x.size(3)
-            losses['sfa_loss'] = F.mse_loss(up_x[:,:,:l_feat_h,:l_feat_w], l_x, reduction='mean')
+            if proposal is None:
+                losses['sfa_loss'] = F.mse_loss(up_x[:,:,:l_feat_h,:l_feat_w], l_x, reduction='mean')
+            else:
+                pass
         return losses
