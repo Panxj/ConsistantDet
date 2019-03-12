@@ -97,14 +97,14 @@ class FCNMaskHead(nn.Module):
                                    gt_masks, rcnn_train_cfg)
         return mask_targets
 
-    def loss(self, mask_pred, mask_targets, labels):
+    def loss(self, mask_pred, mask_targets, labels, scale='orig'):
         loss = dict()
         if self.class_agnostic:
             loss_mask = mask_cross_entropy(mask_pred, mask_targets,
                                            torch.zeros_like(labels))
         else:
             loss_mask = mask_cross_entropy(mask_pred, mask_targets, labels)
-        loss['loss_mask'] = loss_mask
+        loss['loss_mask_{}'.format(scale)] = loss_mask
         return loss
 
     def get_seg_masks(self, mask_pred, det_bboxes, det_labels, rcnn_test_cfg,

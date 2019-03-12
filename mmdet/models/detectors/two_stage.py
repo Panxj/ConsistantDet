@@ -8,7 +8,7 @@ from .. import builder
 from ..registry import DETECTORS
 from mmdet.core import bbox2roi, bbox2result, build_assigner, build_sampler
 import numpy as np
-
+import copy
 @DETECTORS.register_module
 class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
                        MaskTestMixin):
@@ -93,27 +93,38 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
             down_img_h = int(np.ceil(down_img_h / 32) * 32)
             down_img_w = int(np.ceil(down_img_w / 32) * 32)
             down_img = F.interpolate(img, size=(down_img_h, down_img_w) ,mode='bilinear', align_corners=True)
+            img_meta_orig = self.down_img_meta(img_meta)
             x = self.extract_feat(down_img)
             if self.neck.with_sfa_loss:
                 x_stage = self.extract_certain_feat(img, stage=1)
+
         else:
             x = self.extract_feat(img)
         losses = dict()
 
         if hasattr(self.neck, 'with_sfa') and self.neck.with_sfa_loss:
-            loss_sfa = self.neck.loss(x[0], x_stage, stage=1)
+            loss_sfa = self.neck.loss(x[1][0], x_stage, stage=1)
             losses.update(loss_sfa)
 
         # RPN forward and loss
         if self.with_rpn:
-            rpn_outs = self.rpn_head(x)
-            rpn_loss_inputs = rpn_outs + (gt_bboxes, img_meta,
+            rpn_outs_orig = self.rpn_head(x[0])
+            rpn_outs_sfa = self.rpn_head(x[1])
+            rpn_loss_inputs_orig = rpn_outs_orig + (gt_bboxes, img_meta_orig,
                                           self.train_cfg.rpn)
-            rpn_losses = self.rpn_head.loss(*rpn_loss_inputs)
-            losses.update(rpn_losses)
+            rpn_losses_orig = self.rpn_head.loss(*rpn_loss_inputs_orig, scale='orig')
+            rpn_loss_inputs_sfa = rpn_outs_sfa + (gt_bboxes, img_meta,
+                                                    self.train_cfg.rpn)
+            rpn_losses_sfa = self.rpn_head.loss(*rpn_loss_inputs_sfa, scale='sfa')
 
-            proposal_inputs = rpn_outs + (img_meta, self.test_cfg.rpn)
-            proposal_list = self.rpn_head.get_bboxes(*proposal_inputs)
+            losses.update(rpn_losses_orig)
+            losses.update(rpn_losses_sfa)
+
+            proposal_inputs_orig = rpn_outs_orig + (img_meta_orig, self.test_cfg.rpn)
+            proposal_list_orig = self.rpn_head.get_bboxes(*proposal_inputs_orig)
+
+            proposal_inputs_sfa = rpn_outs_sfa + (img_meta, self.test_cfg.rpn)
+            proposal_list_sfa = self.rpn_head.get_bboxes(*proposal_inputs_sfa)
         else:
             proposal_list = proposals
 
@@ -123,46 +134,83 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
             bbox_sampler = build_sampler(
                 self.train_cfg.rcnn.sampler, context=self)
             num_imgs = img.size(0)
-            sampling_results = []
+            sampling_results_orig = []
+            sampling_results_sfa = []
             for i in range(num_imgs):
-                assign_result = bbox_assigner.assign(
-                    proposal_list[i], gt_bboxes[i], gt_bboxes_ignore[i],
+                assign_result_orig = bbox_assigner.assign(
+                    proposal_list_orig[i], gt_bboxes[i], gt_bboxes_ignore[i],
                     gt_labels[i])
-                sampling_result = bbox_sampler.sample(
-                    assign_result,
-                    proposal_list[i],
+                sampling_result_orig = bbox_sampler.sample(
+                    assign_result_orig,
+                    proposal_list_orig[i],
                     gt_bboxes[i],
                     gt_labels[i],
-                    feats=[lvl_feat[i][None] for lvl_feat in x])
-                sampling_results.append(sampling_result)
+                    feats=[lvl_feat[i][None] for lvl_feat in x[0]])
+                sampling_results_orig.append(sampling_result_orig)
+
+                assign_result_sfa = bbox_assigner.assign(
+                    proposal_list_sfa[i], gt_bboxes[i], gt_bboxes_ignore[i],
+                    gt_labels[i])
+                sampling_result_sfa = bbox_sampler.sample(
+                    assign_result_sfa,
+                    proposal_list_sfa[i],
+                    gt_bboxes[i],
+                    gt_labels[i],
+                    feats=[lvl_feat[i][None] for lvl_feat in x[1]])
+                sampling_results_sfa.append(sampling_result_sfa)
 
         # bbox head forward and loss
         if self.with_bbox:
-            rois = bbox2roi([res.bboxes for res in sampling_results])
+            rois_orig = bbox2roi([res.bboxes for res in sampling_results_orig])
             # TODO: a more flexible way to decide which feature maps to use
             bbox_feats = self.bbox_roi_extractor(
-                x[:self.bbox_roi_extractor.num_inputs], rois)
+                x[0][:self.bbox_roi_extractor.num_inputs], rois_orig)
             cls_score, bbox_pred = self.bbox_head(bbox_feats)
 
             bbox_targets = self.bbox_head.get_target(
-                sampling_results, gt_bboxes, gt_labels, self.train_cfg.rcnn)
+                sampling_results_orig, gt_bboxes, gt_labels, self.train_cfg.rcnn)
             loss_bbox = self.bbox_head.loss(cls_score, bbox_pred,
-                                            *bbox_targets)
+                                            *bbox_targets, scale='orig')
+            losses.update(loss_bbox)
+            # for sfa
+            rois_sfa = bbox2roi([res.bboxes for res in sampling_results_sfa])
+            # TODO: a more flexible way to decide which feature maps to use
+            bbox_feats = self.bbox_roi_extractor(
+                x[1][:self.bbox_roi_extractor.num_inputs], rois_sfa)
+            cls_score, bbox_pred = self.bbox_head(bbox_feats)
+
+            bbox_targets = self.bbox_head.get_target(
+                sampling_results_sfa, gt_bboxes, gt_labels, self.train_cfg.rcnn)
+            loss_bbox = self.bbox_head.loss(cls_score, bbox_pred,
+                                            *bbox_targets, scale='sfa')
             losses.update(loss_bbox)
 
         # mask head forward and loss
         if self.with_mask:
-            pos_rois = bbox2roi([res.pos_bboxes for res in sampling_results])
+            pos_rois = bbox2roi([res.pos_bboxes for res in sampling_results_orig])
             mask_feats = self.mask_roi_extractor(
-                x[:self.mask_roi_extractor.num_inputs], pos_rois)
+                x[0][:self.mask_roi_extractor.num_inputs], pos_rois)
             mask_pred = self.mask_head(mask_feats)
 
             mask_targets = self.mask_head.get_target(
-                sampling_results, gt_masks, self.train_cfg.rcnn)
+                sampling_results_orig, gt_masks, self.train_cfg.rcnn)
             pos_labels = torch.cat(
-                [res.pos_gt_labels for res in sampling_results])
+                [res.pos_gt_labels for res in sampling_results_orig])
             loss_mask = self.mask_head.loss(mask_pred, mask_targets,
-                                            pos_labels)
+                                            pos_labels, scale='orig')
+            losses.update(loss_mask)
+            # for sfa
+            pos_rois = bbox2roi([res.pos_bboxes for res in sampling_results_sfa])
+            mask_feats = self.mask_roi_extractor(
+                x[1][:self.mask_roi_extractor.num_inputs], pos_rois)
+            mask_pred = self.mask_head(mask_feats)
+
+            mask_targets = self.mask_head.get_target(
+                sampling_results_sfa, gt_masks, self.train_cfg.rcnn)
+            pos_labels = torch.cat(
+                [res.pos_gt_labels for res in sampling_results_sfa])
+            loss_mask = self.mask_head.loss(mask_pred, mask_targets,
+                                            pos_labels, scale='sfa')
             losses.update(loss_mask)
 
         return losses
@@ -223,3 +271,15 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
             return bbox_results, segm_results
         else:
             return bbox_results
+
+    def down_img_meta(self, img_meta):
+        key_word = ['img_shape','pad_shape']
+        img_meta_down = copy.deepcopy(img_meta)
+        for i in range(len(img_meta)):
+            for key in key_word:
+                orig_key_v = list(img_meta[i][key])
+                for j in range(len(orig_key_v)-1):
+                    orig_key_v[j] = orig_key_v[j] //2
+                img_meta_down[i][key] = tuple(orig_key_v)
+            img_meta_down[i]['scale_factor'] = img_meta[i]['scale_factor']/2
+        return img_meta_down

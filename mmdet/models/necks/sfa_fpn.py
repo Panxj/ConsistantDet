@@ -114,8 +114,9 @@ class SFA_FPN(nn.Module):
             in_channels[0],
             in_channels[0]//4,
             1,
-            bias=False,
-            normalize=dict(type='BN', frozen=False))
+            bias=self.with_bias,
+            activation=self.activation,
+            )
 
     # default init_weights for conv(msra) and norm in ConvModule
     def init_weights(self):
@@ -127,47 +128,69 @@ class SFA_FPN(nn.Module):
         assert len(inputs) == len(self.in_channels)
 
         # build super feature
-        sfa_laterals = [self.sfa_l_convTs[i](inputs[i + self.start_level])
+        sfa_laterals_1 = [self.sfa_l_convTs[i](inputs[i + self.start_level])
                for i in range(len(inputs))]
 
         # build top-down path
-        used_backbone_levels = len(sfa_laterals)
+        used_backbone_levels = len(sfa_laterals_1)
         for i in range(used_backbone_levels - 1, 0, -1):
-            sfa_laterals[i-1] += F.interpolate(
-                self.sfa_tp_convs[i-1](sfa_laterals[i]), scale_factor=2, mode='nearest')
+            sfa_laterals_1[i-1] += F.interpolate(
+                self.sfa_tp_convs[i-1](sfa_laterals_1[i]), scale_factor=2, mode='nearest')
+
+        # build laterals for sfa
+        sfa_laterals_2 = [
+            lateral_conv(sfa_laterals_1[i + self.start_level])
+            for i, lateral_conv in enumerate(self.lateral_convs)
+        ]
+
+        # build top-down path for sfa
+        used_backbone_levels = len(sfa_laterals_2)
+        for i in range(used_backbone_levels - 1, 0, -1):
+            sfa_laterals_2[i - 1] += F.interpolate(
+                sfa_laterals_2[i], scale_factor=2, mode='nearest')
+
+        # build outputs for sfa
+        # part 1: from original levels
+        sfa_outs = [
+            self.fpn_convs[i](sfa_laterals_2[i]) for i in range(used_backbone_levels)
+        ]
 
         # build laterals
-        laterals = [
-            lateral_conv(sfa_laterals[i + self.start_level])
+        orig_laterals = [
+            lateral_conv(inputs[i + self.start_level])
             for i, lateral_conv in enumerate(self.lateral_convs)
         ]
 
         # build top-down path
-        used_backbone_levels = len(laterals)
+        used_backbone_levels = len(orig_laterals)
         for i in range(used_backbone_levels - 1, 0, -1):
-            laterals[i - 1] += F.interpolate(
-                laterals[i], scale_factor=2, mode='nearest')
+            orig_laterals[i - 1] += F.interpolate(
+                orig_laterals[i], scale_factor=2, mode='nearest')
 
         # build outputs
         # part 1: from original levels
-        outs = [
-            self.fpn_convs[i](laterals[i]) for i in range(used_backbone_levels)
+        orig_outs = [
+            self.fpn_convs[i](orig_laterals[i]) for i in range(used_backbone_levels)
         ]
-        # part 2: add extra levels
-        if self.num_outs > len(outs):
-            # use max pool to get more levels on top of outputs
-            # (e.g., Faster R-CNN, Mask R-CNN)
-            if not self.add_extra_convs:
-                for i in range(self.num_outs - used_backbone_levels):
-                    outs.append(F.max_pool2d(outs[-1], 1, stride=2))
-            # add conv layers on top of original feature maps (RetinaNet)
-            else:
-                orig = inputs[self.backbone_end_level - 1]
-                outs.append(self.fpn_convs[used_backbone_levels](orig))
-                for i in range(used_backbone_levels + 1, self.num_outs):
-                    # BUG: we should add relu before each extra conv
-                    outs.append(self.fpn_convs[i](outs[-1]))
-        return tuple(outs)
+        outs_list =[orig_outs, sfa_outs]
+        final_outs = []
+        for outs in outs_list:
+            # part 2: add extra levels
+            if self.num_outs > len(outs):
+                # use max pool to get more levels on top of outputs
+                # (e.g., Faster R-CNN, Mask R-CNN)
+                if not self.add_extra_convs:
+                    for i in range(self.num_outs - used_backbone_levels):
+                        outs.append(F.max_pool2d(outs[-1], 1, stride=2))
+                # add conv layers on top of original feature maps (RetinaNet)
+                else:
+                    orig = inputs[self.backbone_end_level - 1]
+                    outs.append(self.fpn_convs[used_backbone_levels](orig))
+                    for i in range(used_backbone_levels + 1, self.num_outs):
+                        # BUG: we should add relu before each extra conv
+                        outs.append(self.fpn_convs[i](outs[-1]))
+            final_outs.append(outs)
+        return tuple(final_outs)
 
     def loss(self, up_x, large_x, stage=1):
         losses = dict()
