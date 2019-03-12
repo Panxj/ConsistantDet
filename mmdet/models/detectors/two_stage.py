@@ -94,6 +94,7 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
             down_img_w = int(np.ceil(down_img_w / 32) * 32)
             down_img = F.interpolate(img, size=(down_img_h, down_img_w) ,mode='bilinear', align_corners=True)
             img_meta_orig = self.down_img_meta(img_meta)
+            gt_bboxes_orig, gt_masks_orig = self.down_gt_bboxes_masks(gt_bboxes, gt_masks)
             x = self.extract_feat(down_img)
             if self.neck.with_sfa_loss:
                 x_stage = self.extract_certain_feat(img, stage=1)
@@ -108,7 +109,7 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
         if self.with_rpn:
             if hasattr(self.neck, 'with_sfa') and self.neck.with_orig:
                 rpn_outs_orig = self.rpn_head(x[1])
-                rpn_loss_inputs_orig = rpn_outs_orig + (gt_bboxes, img_meta_orig,
+                rpn_loss_inputs_orig = rpn_outs_orig + (gt_bboxes_orig, img_meta_orig,
                                               self.train_cfg.rpn)
                 rpn_losses_orig = self.rpn_head.loss(*rpn_loss_inputs_orig, scale='orig')
                 losses.update(rpn_losses_orig)
@@ -140,12 +141,12 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
             for i in range(num_imgs):
                 if hasattr(self.neck, 'with_sfa') and self.neck.with_orig:
                     assign_result_orig = bbox_assigner.assign(
-                        proposal_list_orig[i], gt_bboxes[i], gt_bboxes_ignore[i],
+                        proposal_list_orig[i], gt_bboxes_orig[i], gt_bboxes_ignore[i],
                         gt_labels[i])
                     sampling_result_orig = bbox_sampler.sample(
                         assign_result_orig,
                         proposal_list_orig[i],
-                        gt_bboxes[i],
+                        gt_bboxes_orig[i],
                         gt_labels[i],
                         feats=[lvl_feat[i][None] for lvl_feat in x[1]])
                     sampling_results_orig.append(sampling_result_orig)
@@ -171,7 +172,7 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
                 cls_score, bbox_pred = self.bbox_head(bbox_feats)
 
                 bbox_targets = self.bbox_head.get_target(
-                    sampling_results_orig, gt_bboxes, gt_labels, self.train_cfg.rcnn)
+                    sampling_results_orig, gt_bboxes_orig, gt_labels, self.train_cfg.rcnn)
                 loss_bbox = self.bbox_head.loss(cls_score, bbox_pred,
                                                 *bbox_targets, scale='orig')
                 losses.update(loss_bbox)
@@ -200,7 +201,7 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
                 mask_pred = self.mask_head(mask_feats)
 
                 mask_targets = self.mask_head.get_target(
-                    sampling_results_orig, gt_masks, self.train_cfg.rcnn)
+                    sampling_results_orig, gt_masks_orig, self.train_cfg.rcnn)
                 pos_labels = torch.cat(
                     [res.pos_gt_labels for res in sampling_results_orig])
                 loss_mask = self.mask_head.loss(mask_pred, mask_targets,
@@ -241,6 +242,7 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
         bbox_results_sfa = bbox2result(det_bboxes_sfa, det_labels_sfa,
                                        self.bbox_head.num_classes)
         bbox_results = []
+        segm_results = []
         if hasattr(self.neck, 'with_sfa') and self.neck.with_orig:
             proposal_list_orig = self.simple_test_rpn(
                 x[1], img_meta_orig, self.test_cfg.rpn) if proposals is None else proposals
@@ -260,8 +262,8 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
 
         if not self.with_mask:
             return bbox_results
+
         else:
-            segm_results = []
             segm_results_sfa = self.simple_test_mask(
                 x[0], img_meta, det_bboxes_sfa, det_labels_sfa, rescale=rescale)
             if hasattr(self.neck, 'with_sfa') and self.neck.with_orig:
@@ -273,7 +275,7 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
                     segm_results = segm_results_orig
                 else:
                     for i in range(len(segm_results_orig)):
-                        segm_results.append(segm_results_orig[i].extend(segm_results_sfa[i]))
+                        segm_results.append(segm_results_orig[i] + segm_results_sfa[i])
             else:
                 segm_results = segm_results_sfa
 
@@ -319,3 +321,14 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
                 img_meta_down[i][key] = tuple(orig_key_v)
             img_meta_down[i]['scale_factor'] = img_meta[i]['scale_factor']/2
         return img_meta_down
+
+    def down_gt_bboxes_masks(self,gt_bboxes, gt_masks):
+        gt_bboxes_orig =[]
+        gt_masks_orig=[]
+        num_imgs = len(gt_bboxes)
+        for i in range(num_imgs):
+            gt_bboxes_orig.append(gt_bboxes[i]/2)
+            gt_masks_orig.append(gt_masks[i][:,0::2,0::2])
+        return gt_bboxes_orig, gt_masks_orig
+
+
