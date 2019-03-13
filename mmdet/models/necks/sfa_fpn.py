@@ -219,19 +219,19 @@ class SFA_FPN(nn.Module):
                 avg_size = proposal.size(0)
                 proposal[:,1:] = (proposal[:,1:]/stride).round()
                 proposal = proposal.int()
-                proposal[:, 1] = proposal[:, 1].clamp(0, l_feat_h - 1)
-                proposal[:, 3] = proposal[:, 3].clamp(0, l_feat_h - 1)
-                proposal[:, 2] = proposal[:, 2].clamp(0, l_feat_w - 1)
-                proposal[:, 4] = proposal[:, 4].clamp(0, l_feat_w - 1)
+                proposal[:, 1] = proposal[:, 1].clamp(0, l_feat_w - 1)
+                proposal[:, 3] = proposal[:, 3].clamp(0, l_feat_w - 1)
+                proposal[:, 2] = proposal[:, 2].clamp(0, l_feat_h - 1)
+                proposal[:, 4] = proposal[:, 4].clamp(0, l_feat_h - 1)
                 num_imgs = l_x.size(0)
                 for i in range(num_imgs):
                     inds = torch.nonzero(proposal[:,0] == i).squeeze()
                     proposals = proposal[inds,:][:,1:]
                     for j in range(proposals.size(0)):
-                        loss += F.mse_loss(up_x[i][:, proposals[j,0]:(proposals[j,2]+1),
-                                           proposals[j,1]:(proposals[j,3]+1)],
-                                           l_x[i][:, proposals[j,0]:(proposals[j,2]+1),
-                                           proposals[j,1]:(proposals[j,3]+1)],
+                        loss += F.mse_loss(up_x[i][:, proposals[j,1]:(proposals[j,3]+1),
+                                           proposals[j,0]:(proposals[j,2]+1)],
+                                           l_x[i][:, proposals[j,1]:(proposals[j,3]+1),
+                                           proposals[j,0]:(proposals[j,2]+1)],
                                            reduction='mean')
                 loss /= avg_size
         return losses
