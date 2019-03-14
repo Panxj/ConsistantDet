@@ -34,11 +34,18 @@ class RPNHead(AnchorHead):
         rpn_bbox_pred = self.rpn_reg(x)
         return rpn_cls_score, rpn_bbox_pred
 
-    def loss(self, cls_scores, bbox_preds, gt_bboxes, img_metas, cfg, scale='orig'):
+    def loss(self, cls_scores, bbox_preds, gt_bboxes, img_metas, cfg, scale='orig', orig_w = 1.0):
         losses = super(RPNHead, self).loss(cls_scores, bbox_preds, gt_bboxes,
                                            None, img_metas, cfg)
-        return {'loss_rpn_cls_{}'.format(scale): losses['loss_cls'],
-                'loss_rpn_reg_{}'.format(scale): losses['loss_reg']}
+        if scale == 'orig':
+            for i in range(len(losses['loss_cls'])):
+                losses['loss_cls'][i] = losses['loss_cls'][i] * orig_w
+                losses['loss_reg'][i] = losses['loss_reg'][i] * orig_w
+            return {'loss_rpn_cls_{}'.format(scale): losses['loss_cls'],
+                    'loss_rpn_reg_{}'.format(scale): losses['loss_reg']}
+        else:
+            return {'loss_rpn_cls_{}'.format(scale): losses['loss_cls'],
+                    'loss_rpn_reg_{}'.format(scale): losses['loss_reg']}
 
     def get_bboxes_single(self,
                           cls_scores,

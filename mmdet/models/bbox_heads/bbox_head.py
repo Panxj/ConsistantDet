@@ -88,18 +88,31 @@ class BBoxHead(nn.Module):
              bbox_targets,
              bbox_weights,
              reduce=True,
-             scale='orig'):
+             scale='orig',
+             orig_w = 1.0):
         losses = dict()
-        if cls_score is not None:
-            losses['loss_cls_{}'.format(scale)] = weighted_cross_entropy(
-                cls_score, labels, label_weights, reduce=reduce)
-            losses['acc_{}'.format(scale)] = accuracy(cls_score, labels)
-        if bbox_pred is not None:
-            losses['loss_reg_{}'.format(scale)] = weighted_smoothl1(
-                bbox_pred,
-                bbox_targets,
-                bbox_weights,
-                avg_factor=bbox_targets.size(0))
+        if scale == 'orig':
+            if cls_score is not None:
+                losses['loss_cls_{}'.format(scale)] = orig_w * weighted_cross_entropy(
+                    cls_score, labels, label_weights, reduce=reduce)
+                losses['acc_{}'.format(scale)] = accuracy(cls_score, labels)
+            if bbox_pred is not None:
+                losses['loss_reg_{}'.format(scale)] =  orig_w * weighted_smoothl1(
+                    bbox_pred,
+                    bbox_targets,
+                    bbox_weights,
+                    avg_factor=bbox_targets.size(0))
+        else:
+            if cls_score is not None:
+                losses['loss_cls_{}'.format(scale)] = weighted_cross_entropy(
+                    cls_score, labels, label_weights, reduce=reduce)
+                losses['acc_{}'.format(scale)] = accuracy(cls_score, labels)
+            if bbox_pred is not None:
+                losses['loss_reg_{}'.format(scale)] = weighted_smoothl1(
+                    bbox_pred,
+                    bbox_targets,
+                    bbox_weights,
+                    avg_factor=bbox_targets.size(0))
         return losses
 
     def get_det_bboxes(self,

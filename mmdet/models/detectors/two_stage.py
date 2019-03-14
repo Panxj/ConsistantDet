@@ -111,7 +111,8 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
                 rpn_outs_orig = self.rpn_head(x[1])
                 rpn_loss_inputs_orig = rpn_outs_orig + (gt_bboxes_orig, img_meta_orig,
                                               self.train_cfg.rpn)
-                rpn_losses_orig = self.rpn_head.loss(*rpn_loss_inputs_orig, scale='orig')
+                rpn_losses_orig = self.rpn_head.loss(*rpn_loss_inputs_orig, scale='orig',
+                                                     orig_w= self.neck.orig_loss_weight)
                 losses.update(rpn_losses_orig)
 
                 proposal_inputs_orig = rpn_outs_orig + (img_meta_orig, self.test_cfg.rpn)
@@ -174,7 +175,7 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
                 bbox_targets = self.bbox_head.get_target(
                     sampling_results_orig, gt_bboxes_orig, gt_labels, self.train_cfg.rcnn)
                 loss_bbox = self.bbox_head.loss(cls_score, bbox_pred,
-                                                *bbox_targets, scale='orig')
+                                                *bbox_targets, scale='orig', orig_w = self.neck.orig_loss_weight)
                 losses.update(loss_bbox)
             # for sfa
             rois_sfa = bbox2roi([res.bboxes for res in sampling_results_sfa])
@@ -291,21 +292,38 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
                     return bbox_results, segm_results
 
         else:
-            proposal_list_sfa = self.simple_test_rpn(
-                x[0], img_meta, self.test_cfg.rpn) if proposals is None else proposals
-            det_bboxes_sfa, det_labels_sfa = self.simple_test_bboxes(
-                x[0], img_meta, proposal_list_sfa, self.test_cfg.rcnn, rescale=rescale)
-            bbox_results_sfa = bbox2result(det_bboxes_sfa, det_labels_sfa,
-                                           self.bbox_head.num_classes)
+            if hasattr(self.neck, 'with_sfa'):
+                proposal_list_sfa = self.simple_test_rpn(
+                    x[0], img_meta, self.test_cfg.rpn) if proposals is None else proposals
+                det_bboxes_sfa, det_labels_sfa = self.simple_test_bboxes(
+                    x[0], img_meta, proposal_list_sfa, self.test_cfg.rcnn, rescale=rescale)
+                bbox_results_sfa = bbox2result(det_bboxes_sfa, det_labels_sfa,
+                                               self.bbox_head.num_classes)
 
-            if not self.with_mask:
-                return bbox_results_sfa
+                if not self.with_mask:
+                    return bbox_results_sfa
 
+                else:
+                    segm_results_sfa = self.simple_test_mask(
+                        x[0], img_meta, det_bboxes_sfa, det_labels_sfa, rescale=rescale)
+
+                    return bbox_results_sfa, segm_results_sfa
             else:
-                segm_results_sfa = self.simple_test_mask(
-                    x[0], img_meta, det_bboxes_sfa, det_labels_sfa, rescale=rescale)
+                proposal_list_sfa = self.simple_test_rpn(
+                    x, img_meta, self.test_cfg.rpn) if proposals is None else proposals
+                det_bboxes_sfa, det_labels_sfa = self.simple_test_bboxes(
+                    x, img_meta, proposal_list_sfa, self.test_cfg.rcnn, rescale=rescale)
+                bbox_results_sfa = bbox2result(det_bboxes_sfa, det_labels_sfa,
+                                               self.bbox_head.num_classes)
 
-                return bbox_results_sfa, segm_results_sfa
+                if not self.with_mask:
+                    return bbox_results_sfa
+
+                else:
+                    segm_results_sfa = self.simple_test_mask(
+                        x, img_meta, det_bboxes_sfa, det_labels_sfa, rescale=rescale)
+
+                    return bbox_results_sfa, segm_results_sfa
 
     def aug_test(self, imgs, img_metas, rescale=False):
         """Test with augmentations.

@@ -21,10 +21,12 @@ class SFA_FPN(nn.Module):
                  activation=None,
                  with_sfa_loss=False,
                  with_orig =False,
+                 orig_loss_weight=1.0,
                  only_sfa_result=False,
                  only_orig_result=False,
                  segm_out_flag=0,
-                 with_rpn_clip=False):
+                 with_rpn_clip=False,
+                 loss_weight=1.0):
         super(SFA_FPN, self).__init__()
         assert isinstance(in_channels, list)
         self.in_channels = in_channels
@@ -40,6 +42,8 @@ class SFA_FPN(nn.Module):
         self.only_orig_result = only_orig_result
         self.segm_out_flag = segm_out_flag
         self.with_rpn_clip = with_rpn_clip
+        self.loss_weight = loss_weight
+        self.orig_loss_weight = orig_loss_weight
         if end_level == -1:
             self.backbone_end_level = self.num_ins
             assert num_outs >= self.num_ins - start_level
@@ -234,4 +238,5 @@ class SFA_FPN(nn.Module):
                                            proposals[j,0]:(proposals[j,2]+1)],
                                            reduction='mean')
                 loss /= avg_size
+                loss *= self.loss_weight
         return losses

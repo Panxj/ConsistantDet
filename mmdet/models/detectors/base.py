@@ -86,7 +86,8 @@ class BaseDetector(nn.Module):
                     result,
                     img_norm_cfg,
                     dataset='coco',
-                    score_thr=0.3):
+                    score_thr=0.3,
+                    rescale=True):
         if isinstance(result, tuple):
             bbox_result, segm_result = result
         else:
@@ -131,4 +132,6 @@ class BaseDetector(nn.Module):
                 bboxes,
                 labels,
                 class_names=class_names,
-                score_thr=score_thr)
+                score_thr=score_thr,
+                show=False,
+                out_file='/home/xingjia/Projects/SFANet/test_results/show/out_2_test.jpg')
