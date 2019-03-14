@@ -201,6 +201,7 @@ class MaskTestMixin(object):
                 return segm_result_sfa
             else:
                 raise Exception('Not right out_flag')
+        return segm_result
 
 
     def aug_test_mask(self, feats, img_metas, det_bboxes, det_labels):
