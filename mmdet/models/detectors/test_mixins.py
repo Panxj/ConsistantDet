@@ -129,7 +129,8 @@ class MaskTestMixin(object):
                          img_meta,
                          det_bboxes,
                          det_labels,
-                         rescale=False):
+                         rescale=False,
+                         is_orig=False):
         # image shape of the first image in the batch (only one)
         ori_shape = img_meta[0]['ori_shape']
         scale_factor = img_meta[0]['scale_factor']
@@ -146,7 +147,7 @@ class MaskTestMixin(object):
             mask_pred = self.mask_head(mask_feats)
             segm_result = self.mask_head.get_seg_masks(
                 mask_pred, _bboxes, det_labels, self.test_cfg.rcnn, ori_shape,
-                scale_factor, rescale)
+                scale_factor, rescale, is_orig=is_orig)
         return segm_result
 
     def simple_test_mask_for_sfa_with_orig(self,

@@ -27,7 +27,8 @@ class SFA_FPN(nn.Module):
                  segm_out_flag=0,
                  with_rpn_clip=False,
                  loss_weight=1.0,
-                 aug_channels=True):
+                 aug_channels=True,
+                 up_shuffle=False):
         super(SFA_FPN, self).__init__()
         assert isinstance(in_channels, list)
         self.in_channels = in_channels
@@ -46,6 +47,7 @@ class SFA_FPN(nn.Module):
         self.loss_weight = loss_weight
         self.orig_loss_weight = orig_loss_weight
         self.aug_channels = aug_channels
+        self.up_shufle=up_shuffle
         if end_level == -1:
             self.backbone_end_level = self.num_ins
             assert num_outs >= self.num_ins - start_level
@@ -58,37 +60,19 @@ class SFA_FPN(nn.Module):
         self.end_level = end_level
         self.add_extra_convs = add_extra_convs
 
-        self.sfa_l_convTs = nn.ModuleList()
+        self.sfa_l_ups = nn.ModuleList()
         self.sfa_tp_convs = nn.ModuleList()
         self.lateral_convs = nn.ModuleList()
         self.fpn_convs = nn.ModuleList()
 
         for i in range(self.start_level, self.backbone_end_level):
-            if self.aug_channels:
-                sfa_l_convT = nn.ConvTranspose2d(
-                    in_channels[i],
-                    in_channels[i],
-                    3,
-                    stride=2,
-                    padding=1,
-                    output_padding=1
-                )
-                sfa_td_conv = ConvModule(
-                    in_channels[i+1],
-                    in_channels[i],
-                    1,
-                    normalize=normalize,
-                    bias=self.with_bias,
-                    activation=self.activation,
-                    inplace=False) if i+1 < self.backbone_end_level else None
-            else:
-                sfa_l_convT = nn.ConvTranspose2d(
-                    in_channels[i],
-                    out_channels,
-                    3,
-                    stride=2,
-                    padding=1,
-                    output_padding=1
+            if self.up_shufle:
+                sfa_l_up = nn.Sequential(
+                    nn.Conv2d(in_channels[i], out_channels, 1),
+                    nn.ReLU(inplace=True),
+                    nn.Conv2d(out_channels, out_channels*4, 3, padding=1),
+                    nn.ReLU(inplace=True),
+                    nn.PixelShuffle(upscale_factor=2)
                 )
                 sfa_td_conv = ConvModule(
                     out_channels,
@@ -98,6 +82,41 @@ class SFA_FPN(nn.Module):
                     bias=self.with_bias,
                     activation=self.activation,
                     inplace=False) if i + 1 < self.backbone_end_level else None
+            else:
+                if self.aug_channels:
+                    sfa_l_up = nn.ConvTranspose2d(
+                        in_channels[i],
+                        in_channels[i],
+                        3,
+                        stride=2,
+                        padding=1,
+                        output_padding=1
+                    )
+                    sfa_td_conv = ConvModule(
+                        in_channels[i+1],
+                        in_channels[i],
+                        1,
+                        normalize=normalize,
+                        bias=self.with_bias,
+                        activation=self.activation,
+                        inplace=False) if i+1 < self.backbone_end_level else None
+                else:
+                    sfa_l_up = nn.ConvTranspose2d(
+                        in_channels[i],
+                        out_channels,
+                        3,
+                        stride=2,
+                        padding=1,
+                        output_padding=1
+                    )
+                    sfa_td_conv = ConvModule(
+                        out_channels,
+                        out_channels,
+                        1,
+                        normalize=normalize,
+                        bias=self.with_bias,
+                        activation=self.activation,
+                        inplace=False) if i + 1 < self.backbone_end_level else None
             l_conv = ConvModule(
                 in_channels[i],
                 out_channels,
@@ -116,7 +135,7 @@ class SFA_FPN(nn.Module):
                 activation=self.activation,
                 inplace=False)
 
-            self.sfa_l_convTs.append(sfa_l_convT)
+            self.sfa_l_ups.append(sfa_l_up)
             if sfa_td_conv is not None:
                 self.sfa_tp_convs.append(sfa_td_conv)
             self.lateral_convs.append(l_conv)
@@ -171,7 +190,7 @@ class SFA_FPN(nn.Module):
         assert len(inputs) == len(self.in_channels)
 
         # build super feature
-        sfa_laterals_1 = [self.sfa_l_convTs[i](inputs[i + self.start_level])
+        sfa_laterals_1 = [self.sfa_l_ups[i](inputs[i + self.start_level])
                for i in range(len(inputs))]
         # sfa_laterals_1 = [F.interpolate(inputs[i + self.start_level], scale_factor=2, mode='nearest')
         #                   for i in range(len(inputs))]

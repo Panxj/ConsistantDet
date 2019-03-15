@@ -261,14 +261,18 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
                     x[1], img_meta_orig, self.test_cfg.rpn) if proposals is None else proposals
                 det_bboxes_orig, det_labels_orig = self.simple_test_bboxes(
                     x[1], img_meta_orig, proposal_list_orig, self.test_cfg.rcnn, rescale=rescale)
-                bbox_results_orig = bbox2result(det_bboxes_orig, det_labels_orig,
-                                                self.bbox_head.num_classes)
+                if not  rescale:
+                    bbox_results_orig = bbox2result(det_bboxes_orig * 2.0, det_labels_orig,
+                                                    self.bbox_head.num_classes)
+                else:
+                    bbox_results_orig = bbox2result(det_bboxes_orig, det_labels_orig,
+                                                    self.bbox_head.num_classes)
 
                 if not self.with_mask:
                     return bbox_results_orig
                 else:
                     segm_results_orig = self.simple_test_mask(
-                        x[1], img_meta_orig, det_bboxes_orig, det_labels_orig, rescale=rescale)
+                        x[1], img_meta_orig, det_bboxes_orig, det_labels_orig, rescale=rescale, is_orig=True)
 
                     return bbox_results_orig, segm_results_orig
             else:

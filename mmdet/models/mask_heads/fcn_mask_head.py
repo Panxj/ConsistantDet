@@ -8,7 +8,7 @@ import torch.nn.functional as F
 from ..registry import HEADS
 from ..utils import ConvModule
 from mmdet.core import mask_cross_entropy, mask_target
-
+import scipy.ndimage
 
 @HEADS.register_module
 class FCNMaskHead(nn.Module):
@@ -137,12 +137,19 @@ class FCNMaskHead(nn.Module):
         if rescale:
             img_h, img_w = ori_shape[:2]
         else:
-            img_h = np.round(ori_shape[0] * scale_factor).astype(np.int32)
-            img_w = np.round(ori_shape[1] * scale_factor).astype(np.int32)
+            if is_orig:
+                img_h = np.round(ori_shape[0] * scale_factor * 2.0).astype(np.int32)
+                img_w = np.round(ori_shape[1] * scale_factor * 2.0).astype(np.int32)
+            else:
+                img_h = np.round(ori_shape[0] * scale_factor).astype(np.int32)
+                img_w = np.round(ori_shape[1] * scale_factor).astype(np.int32)
             scale_factor = 1.0
 
         for i in range(bboxes.shape[0]):
-            bbox = (bboxes[i, :] / scale_factor).astype(np.int32)
+            if is_orig:
+                bbox = (bboxes[i, :] / scale_factor * 2.0).astype(np.int32)
+            else:
+                bbox = (bboxes[i, :] / scale_factor).astype(np.int32)
             label = labels[i]
             w = max(bbox[2] - bbox[0] + 1, 1)
             h = max(bbox[3] - bbox[1] + 1, 1)
@@ -157,8 +164,7 @@ class FCNMaskHead(nn.Module):
             bbox_mask = (bbox_mask > rcnn_test_cfg.mask_thr_binary).astype(
                 np.uint8)
             im_mask[bbox[1]:bbox[1] + h, bbox[0]:bbox[0] + w] = bbox_mask
-            if is_orig and not rescale:
-                im_mask = F.interpolate(im_mask, scale_factor =2, mode='nearest')
+
             rle = mask_util.encode(
                 np.array(im_mask[:, :, np.newaxis], order='F'))[0]
             cls_segms[label - 1].append(rle)

@@ -134,4 +134,4 @@ class BaseDetector(nn.Module):
                 class_names=class_names,
                 score_thr=score_thr,
                 show=False,
-                out_file='/home/xingjia/Projects/SFANet/test_results/show/out_2_test.jpg')
+                out_file='/home/xingjia/Projects/SFANet/test_results/show/out_merge_test.png')
