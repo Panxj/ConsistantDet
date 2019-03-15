@@ -144,13 +144,21 @@ class SFA_FPN(nn.Module):
                     activation=self.activation,
                     inplace=False)
                 self.fpn_convs.append(extra_fpn_conv)
-
-        self.sfa_conv_top = ConvModule(
-            in_channels[0],
-            in_channels[0]//4,
-            1,
-            bias=self.with_bias,
-            activation=self.activation,
+        if self.aug_channels:
+            self.sfa_conv_top = ConvModule(
+                in_channels[0],
+                in_channels[0]//4,
+                1,
+                bias=self.with_bias,
+                activation=self.activation,
+                )
+        else:
+            self.sfa_conv_top = ConvModule(
+                out_channels,
+                out_channels // 4,
+                1,
+                bias=self.with_bias,
+                activation=self.activation,
             )
 
     # default init_weights for conv(msra) and norm in ConvModule
@@ -173,24 +181,28 @@ class SFA_FPN(nn.Module):
         for i in range(used_backbone_levels - 1, 0, -1):
             sfa_laterals_1[i-1] += F.interpolate(
                 self.sfa_tp_convs[i-1](sfa_laterals_1[i]), scale_factor=2, mode='nearest')
+        if self.aug_channels:
+            # build laterals for sfa
+            sfa_laterals_2 = [
+                lateral_conv(sfa_laterals_1[i + self.start_level])
+                for i, lateral_conv in enumerate(self.lateral_convs)
+            ]
 
-        # build laterals for sfa
-        sfa_laterals_2 = [
-            lateral_conv(sfa_laterals_1[i + self.start_level])
-            for i, lateral_conv in enumerate(self.lateral_convs)
-        ]
+            # build top-down path for sfa
+            used_backbone_levels = len(sfa_laterals_2)
+            for i in range(used_backbone_levels - 1, 0, -1):
+                sfa_laterals_2[i - 1] += F.interpolate(
+                    sfa_laterals_2[i], scale_factor=2, mode='nearest')
 
-        # build top-down path for sfa
-        used_backbone_levels = len(sfa_laterals_2)
-        for i in range(used_backbone_levels - 1, 0, -1):
-            sfa_laterals_2[i - 1] += F.interpolate(
-                sfa_laterals_2[i], scale_factor=2, mode='nearest')
-
-        # build outputs for sfa
-        # part 1: from original levels
-        sfa_outs = [
-            self.fpn_convs[i](sfa_laterals_2[i]) for i in range(used_backbone_levels)
-        ]
+            # build outputs for sfa
+            # part 1: from original levels
+            sfa_outs = [
+                self.fpn_convs[i](sfa_laterals_2[i]) for i in range(used_backbone_levels)
+            ]
+        else:
+            sfa_outs = [
+                self.fpn_convs[i](sfa_laterals_1[i]) for i in range(used_backbone_levels)
+            ]
         if self.with_orig:
             # build laterals
             orig_laterals = [
