@@ -96,7 +96,7 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
             img_meta_orig = self.down_img_meta(img_meta)
             gt_bboxes_orig, gt_masks_orig = self.down_gt_bboxes_masks(gt_bboxes, gt_masks)
             x = self.extract_feat(down_img)
-            if self.neck.with_sfa_loss:
+            if self.neck.with_sfa and self.neck.with_sfa_loss:
                 x_stage = self.extract_certain_feat(img, stage=1)
 
         else:
@@ -107,25 +107,36 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
 
         # RPN forward and loss
         if self.with_rpn:
-            if hasattr(self.neck, 'with_sfa') and self.neck.with_orig:
-                rpn_outs_orig = self.rpn_head(x[1])
-                rpn_loss_inputs_orig = rpn_outs_orig + (gt_bboxes_orig, img_meta_orig,
-                                              self.train_cfg.rpn)
-                rpn_losses_orig = self.rpn_head.loss(*rpn_loss_inputs_orig, scale='orig',
-                                                     orig_w= self.neck.orig_loss_weight)
-                losses.update(rpn_losses_orig)
-
-                proposal_inputs_orig = rpn_outs_orig + (img_meta_orig, self.test_cfg.rpn)
-                proposal_list_orig = self.rpn_head.get_bboxes(*proposal_inputs_orig)
-
-            rpn_outs_sfa = self.rpn_head(x[0])
-            rpn_loss_inputs_sfa = rpn_outs_sfa + (gt_bboxes, img_meta,
+            if hasattr(self.neck, 'with_sfa'):
+                if self.neck.with_orig:
+                    rpn_outs_orig = self.rpn_head(x[-1])
+                    rpn_loss_inputs_orig = rpn_outs_orig + (gt_bboxes_orig, img_meta_orig,
                                                   self.train_cfg.rpn)
-            rpn_losses_sfa = self.rpn_head.loss(*rpn_loss_inputs_sfa, scale='sfa')
-            losses.update(rpn_losses_sfa)
+                    rpn_losses_orig = self.rpn_head.loss(*rpn_loss_inputs_orig, scale='orig',
+                                                         orig_w= self.neck.orig_loss_weight)
+                    losses.update(rpn_losses_orig)
 
-            proposal_inputs_sfa = rpn_outs_sfa + (img_meta, self.test_cfg.rpn)
-            proposal_list_sfa = self.rpn_head.get_bboxes(*proposal_inputs_sfa)
+                    proposal_inputs_orig = rpn_outs_orig + (img_meta_orig, self.test_cfg.rpn)
+                    proposal_list_orig = self.rpn_head.get_bboxes(*proposal_inputs_orig)
+
+                if self.neck.with_sfa:
+                    rpn_outs_sfa = self.rpn_head(x[0])
+                    rpn_loss_inputs_sfa = rpn_outs_sfa + (gt_bboxes, img_meta,
+                                                          self.train_cfg.rpn)
+                    rpn_losses_sfa = self.rpn_head.loss(*rpn_loss_inputs_sfa, scale='sfa')
+                    losses.update(rpn_losses_sfa)
+
+                    proposal_inputs_sfa = rpn_outs_sfa + (img_meta, self.test_cfg.rpn)
+                    proposal_list_sfa = self.rpn_head.get_bboxes(*proposal_inputs_sfa)
+            else:
+                rpn_outs_sfa = self.rpn_head(x[0])
+                rpn_loss_inputs_sfa = rpn_outs_sfa + (gt_bboxes, img_meta,
+                                                      self.train_cfg.rpn)
+                rpn_losses_sfa = self.rpn_head.loss(*rpn_loss_inputs_sfa, scale='sfa')
+                losses.update(rpn_losses_sfa)
+
+                proposal_inputs_sfa = rpn_outs_sfa + (img_meta, self.test_cfg.rpn)
+                proposal_list_sfa = self.rpn_head.get_bboxes(*proposal_inputs_sfa)
 
         else:
             proposal_list = proposals
@@ -140,57 +151,84 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
             sampling_results_orig = []
             sampling_results_sfa = []
             for i in range(num_imgs):
-                if hasattr(self.neck, 'with_sfa') and self.neck.with_orig:
-                    assign_result_orig = bbox_assigner.assign(
-                        proposal_list_orig[i], gt_bboxes_orig[i], gt_bboxes_ignore[i],
+                if hasattr(self.neck, 'with_sfa'):
+                    if self.neck.with_orig:
+                        assign_result_orig = bbox_assigner.assign(
+                            proposal_list_orig[i], gt_bboxes_orig[i], gt_bboxes_ignore[i],
+                            gt_labels[i])
+                        sampling_result_orig = bbox_sampler.sample(
+                            assign_result_orig,
+                            proposal_list_orig[i],
+                            gt_bboxes_orig[i],
+                            gt_labels[i],
+                            feats=[lvl_feat[i][None] for lvl_feat in x[-1]])
+                        sampling_results_orig.append(sampling_result_orig)
+                    if self.neck.with_sfa:
+                        assign_result_sfa = bbox_assigner.assign(
+                            proposal_list_sfa[i], gt_bboxes[i], gt_bboxes_ignore[i],
+                            gt_labels[i])
+                        sampling_result_sfa = bbox_sampler.sample(
+                            assign_result_sfa,
+                            proposal_list_sfa[i],
+                            gt_bboxes[i],
+                            gt_labels[i],
+                            feats=[lvl_feat[i][None] for lvl_feat in x[0]])
+                        sampling_results_sfa.append(sampling_result_sfa)
+                else:
+                    assign_result_sfa = bbox_assigner.assign(
+                        proposal_list_sfa[i], gt_bboxes[i], gt_bboxes_ignore[i],
                         gt_labels[i])
-                    sampling_result_orig = bbox_sampler.sample(
-                        assign_result_orig,
-                        proposal_list_orig[i],
-                        gt_bboxes_orig[i],
+                    sampling_result_sfa = bbox_sampler.sample(
+                        assign_result_sfa,
+                        proposal_list_sfa[i],
+                        gt_bboxes[i],
                         gt_labels[i],
-                        feats=[lvl_feat[i][None] for lvl_feat in x[1]])
-                    sampling_results_orig.append(sampling_result_orig)
-
-                assign_result_sfa = bbox_assigner.assign(
-                    proposal_list_sfa[i], gt_bboxes[i], gt_bboxes_ignore[i],
-                    gt_labels[i])
-                sampling_result_sfa = bbox_sampler.sample(
-                    assign_result_sfa,
-                    proposal_list_sfa[i],
-                    gt_bboxes[i],
-                    gt_labels[i],
-                    feats=[lvl_feat[i][None] for lvl_feat in x[0]])
-                sampling_results_sfa.append(sampling_result_sfa)
+                        feats=[lvl_feat[i][None] for lvl_feat in x[0]])
+                    sampling_results_sfa.append(sampling_result_sfa)
 
         # bbox head forward and loss
         if self.with_bbox:
-            if hasattr(self.neck, 'with_sfa') and self.neck.with_orig:
-                rois_orig = bbox2roi([res.bboxes for res in sampling_results_orig])
+            if hasattr(self.neck, 'with_sfa'):
+                if self.neck.with_orig:
+                    rois_orig = bbox2roi([res.bboxes for res in sampling_results_orig])
+                    # TODO: a more flexible way to decide which feature maps to use
+                    bbox_feats = self.bbox_roi_extractor(
+                        x[-1][:self.bbox_roi_extractor.num_inputs], rois_orig)
+                    cls_score, bbox_pred = self.bbox_head(bbox_feats)
+
+                    bbox_targets = self.bbox_head.get_target(
+                        sampling_results_orig, gt_bboxes_orig, gt_labels, self.train_cfg.rcnn)
+                    loss_bbox = self.bbox_head.loss(cls_score, bbox_pred,
+                                                    *bbox_targets, scale='orig', orig_w = self.neck.orig_loss_weight)
+                    losses.update(loss_bbox)
+                if self.neck.with_sfa:
+                    # for sfa
+                    rois_sfa = bbox2roi([res.bboxes for res in sampling_results_sfa])
+                    # TODO: a more flexible way to decide which feature maps to use
+                    bbox_feats = self.bbox_roi_extractor(
+                        x[0][:self.bbox_roi_extractor.num_inputs], rois_sfa)
+                    cls_score, bbox_pred = self.bbox_head(bbox_feats)
+
+                    bbox_targets = self.bbox_head.get_target(
+                        sampling_results_sfa, gt_bboxes, gt_labels, self.train_cfg.rcnn)
+                    loss_bbox = self.bbox_head.loss(cls_score, bbox_pred,
+                                                    *bbox_targets, scale='sfa')
+                    losses.update(loss_bbox)
+
+            else:
+                rois_sfa = bbox2roi([res.bboxes for res in sampling_results_sfa])
                 # TODO: a more flexible way to decide which feature maps to use
                 bbox_feats = self.bbox_roi_extractor(
-                    x[1][:self.bbox_roi_extractor.num_inputs], rois_orig)
+                    x[0][:self.bbox_roi_extractor.num_inputs], rois_sfa)
                 cls_score, bbox_pred = self.bbox_head(bbox_feats)
 
                 bbox_targets = self.bbox_head.get_target(
-                    sampling_results_orig, gt_bboxes_orig, gt_labels, self.train_cfg.rcnn)
+                    sampling_results_sfa, gt_bboxes, gt_labels, self.train_cfg.rcnn)
                 loss_bbox = self.bbox_head.loss(cls_score, bbox_pred,
-                                                *bbox_targets, scale='orig', orig_w = self.neck.orig_loss_weight)
+                                                *bbox_targets, scale='sfa')
                 losses.update(loss_bbox)
-            # for sfa
-            rois_sfa = bbox2roi([res.bboxes for res in sampling_results_sfa])
-            # TODO: a more flexible way to decide which feature maps to use
-            bbox_feats = self.bbox_roi_extractor(
-                x[0][:self.bbox_roi_extractor.num_inputs], rois_sfa)
-            cls_score, bbox_pred = self.bbox_head(bbox_feats)
 
-            bbox_targets = self.bbox_head.get_target(
-                sampling_results_sfa, gt_bboxes, gt_labels, self.train_cfg.rcnn)
-            loss_bbox = self.bbox_head.loss(cls_score, bbox_pred,
-                                            *bbox_targets, scale='sfa')
-            losses.update(loss_bbox)
-
-        if hasattr(self.neck, 'with_sfa') and self.neck.with_sfa_loss:
+        if hasattr(self.neck, 'with_sfa') and self.neck.with_sfa and self.neck.with_sfa_loss :
             if self.neck.with_rpn_clip:
                 loss_sfa = self.neck.loss(x[0][0], x_stage, stage=1, proposal=rois_sfa)
             else:
@@ -198,32 +236,47 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
             losses.update(loss_sfa)
         # mask head forward and loss
         if self.with_mask:
-            if hasattr(self.neck, 'with_sfa') and self.neck.with_orig:
-                pos_rois = bbox2roi([res.pos_bboxes for res in sampling_results_orig])
+            if hasattr(self.neck, 'with_sfa'):
+                if self.neck.with_orig:
+                    pos_rois = bbox2roi([res.pos_bboxes for res in sampling_results_orig])
+                    mask_feats = self.mask_roi_extractor(
+                        x[-1][:self.mask_roi_extractor.num_inputs], pos_rois)
+                    mask_pred = self.mask_head(mask_feats)
+
+                    mask_targets = self.mask_head.get_target(
+                        sampling_results_orig, gt_masks_orig, self.train_cfg.rcnn)
+                    pos_labels = torch.cat(
+                        [res.pos_gt_labels for res in sampling_results_orig])
+                    loss_mask = self.mask_head.loss(mask_pred, mask_targets,
+                                                    pos_labels, scale='orig')
+                    losses.update(loss_mask)
+                if self.neck.with_sfa:
+                    # for sfa
+                    pos_rois = bbox2roi([res.pos_bboxes for res in sampling_results_sfa])
+                    mask_feats = self.mask_roi_extractor(
+                        x[0][:self.mask_roi_extractor.num_inputs], pos_rois)
+                    mask_pred = self.mask_head(mask_feats)
+
+                    mask_targets = self.mask_head.get_target(
+                        sampling_results_sfa, gt_masks, self.train_cfg.rcnn)
+                    pos_labels = torch.cat(
+                        [res.pos_gt_labels for res in sampling_results_sfa])
+                    loss_mask = self.mask_head.loss(mask_pred, mask_targets,
+                                                    pos_labels, scale='sfa')
+                    losses.update(loss_mask)
+            else:
+                pos_rois = bbox2roi([res.pos_bboxes for res in sampling_results_sfa])
                 mask_feats = self.mask_roi_extractor(
-                    x[1][:self.mask_roi_extractor.num_inputs], pos_rois)
+                    x[0][:self.mask_roi_extractor.num_inputs], pos_rois)
                 mask_pred = self.mask_head(mask_feats)
 
                 mask_targets = self.mask_head.get_target(
-                    sampling_results_orig, gt_masks_orig, self.train_cfg.rcnn)
+                    sampling_results_sfa, gt_masks, self.train_cfg.rcnn)
                 pos_labels = torch.cat(
-                    [res.pos_gt_labels for res in sampling_results_orig])
+                    [res.pos_gt_labels for res in sampling_results_sfa])
                 loss_mask = self.mask_head.loss(mask_pred, mask_targets,
-                                                pos_labels, scale='orig')
+                                                pos_labels, scale='sfa')
                 losses.update(loss_mask)
-            # for sfa
-            pos_rois = bbox2roi([res.pos_bboxes for res in sampling_results_sfa])
-            mask_feats = self.mask_roi_extractor(
-                x[0][:self.mask_roi_extractor.num_inputs], pos_rois)
-            mask_pred = self.mask_head(mask_feats)
-
-            mask_targets = self.mask_head.get_target(
-                sampling_results_sfa, gt_masks, self.train_cfg.rcnn)
-            pos_labels = torch.cat(
-                [res.pos_gt_labels for res in sampling_results_sfa])
-            loss_mask = self.mask_head.loss(mask_pred, mask_targets,
-                                            pos_labels, scale='sfa')
-            losses.update(loss_mask)
 
         return losses
 
@@ -240,8 +293,8 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
         else:
             x = self.extract_feat(img)
 
-        if hasattr(self.neck, 'with_sfa') and self.neck.with_orig:
-            if self.neck.only_sfa_result:
+        if hasattr(self.neck, 'with_sfa'):
+            if self.neck.with_sfa and self.neck.only_sfa_result:
                 proposal_list_sfa = self.simple_test_rpn(
                     x[0], img_meta, self.test_cfg.rpn) if proposals is None else proposals
                 det_bboxes_sfa, det_labels_sfa = self.simple_test_bboxes(
@@ -256,7 +309,7 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
                         x[0], img_meta, det_bboxes_sfa, det_labels_sfa, rescale=rescale)
 
                     return bbox_results_sfa, segm_results_sfa
-            elif self.neck.only_orig_result:
+            elif self.neck.with_orig and self.neck.only_orig_result:
                 proposal_list_orig = self.simple_test_rpn(
                     x[1], img_meta_orig, self.test_cfg.rpn) if proposals is None else proposals
                 det_bboxes_orig, det_labels_orig = self.simple_test_bboxes(
@@ -296,38 +349,21 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
                     return bbox_results, segm_results
 
         else:
-            if hasattr(self.neck, 'with_sfa'):
-                proposal_list_sfa = self.simple_test_rpn(
-                    x[0], img_meta, self.test_cfg.rpn) if proposals is None else proposals
-                det_bboxes_sfa, det_labels_sfa = self.simple_test_bboxes(
-                    x[0], img_meta, proposal_list_sfa, self.test_cfg.rcnn, rescale=rescale)
-                bbox_results_sfa = bbox2result(det_bboxes_sfa, det_labels_sfa,
-                                               self.bbox_head.num_classes)
+            proposal_list = self.simple_test_rpn(
+                x, img_meta, self.test_cfg.rpn) if proposals is None else proposals
+            det_bboxes, det_labels = self.simple_test_bboxes(
+                x, img_meta, proposal_list, self.test_cfg.rcnn, rescale=rescale)
+            bbox_results = bbox2result(det_bboxes, det_labels,
+                                           self.bbox_head.num_classes)
 
-                if not self.with_mask:
-                    return bbox_results_sfa
+            if not self.with_mask:
+                return bbox_results
 
-                else:
-                    segm_results_sfa = self.simple_test_mask(
-                        x[0], img_meta, det_bboxes_sfa, det_labels_sfa, rescale=rescale)
-
-                    return bbox_results_sfa, segm_results_sfa
             else:
-                proposal_list_sfa = self.simple_test_rpn(
-                    x, img_meta, self.test_cfg.rpn) if proposals is None else proposals
-                det_bboxes_sfa, det_labels_sfa = self.simple_test_bboxes(
-                    x, img_meta, proposal_list_sfa, self.test_cfg.rcnn, rescale=rescale)
-                bbox_results_sfa = bbox2result(det_bboxes_sfa, det_labels_sfa,
-                                               self.bbox_head.num_classes)
+                segm_results = self.simple_test_mask(
+                    x, img_meta, det_bboxes, det_labels, rescale=rescale)
 
-                if not self.with_mask:
-                    return bbox_results_sfa
-
-                else:
-                    segm_results_sfa = self.simple_test_mask(
-                        x, img_meta, det_bboxes_sfa, det_labels_sfa, rescale=rescale)
-
-                    return bbox_results_sfa, segm_results_sfa
+                return bbox_results, segm_results
 
     def aug_test(self, imgs, img_metas, rescale=False):
         """Test with augmentations.
