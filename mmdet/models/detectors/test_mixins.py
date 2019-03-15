@@ -178,7 +178,7 @@ class MaskTestMixin(object):
 
             # for orig
             _bboxes_orig = (det_bboxes[:, :4] * scale_factor_orig
-                           if rescale else det_bboxes)
+                           if rescale else det_bboxes[:, :4] /2.)
             mask_rois_orig = bbox2roi([_bboxes_orig])
             mask_feats_orig = self.mask_roi_extractor(
                 x_orig[:len(self.mask_roi_extractor.featmap_strides)], mask_rois_orig)
@@ -189,7 +189,7 @@ class MaskTestMixin(object):
                 scale_factor_sfa, rescale)
             segm_result_orig = self.mask_head.get_seg_masks(
                 mask_pred_orig, _bboxes_orig, det_labels, self.test_cfg.rcnn, ori_shape_orig,
-                scale_factor_orig, rescale)
+                scale_factor_orig, rescale, is_orig=True)
             if out_flag == 0:
                 segm_result = []
                 for i in range(len(segm_result_sfa)):

@@ -179,13 +179,14 @@ class BBoxHead(nn.Module):
         else:
             bboxes_orig = rois_orig[:, 1:]
             # TODO: add clip here
-
-        if rescale:
-            bboxes_sfa /= scale_factor_sfa
-            bboxes_orig /= scale_factor_orig
-
+        bboxes_sfa /= scale_factor_sfa
+        bboxes_orig /= scale_factor_orig
         bboxes = torch.cat((bboxes_sfa, bboxes_orig), dim=0)
-        scores = torch.cat((scores_sfa, scores_orig), dim=0)
+        scores = torch.cat((scores_sfa, scores_orig * 0.5), dim=0)
+        bboxes *= scale_factor_sfa
+        if rescale:
+            bboxes /= scale_factor_sfa
+
 
         if cfg is None:
             return bboxes, scores

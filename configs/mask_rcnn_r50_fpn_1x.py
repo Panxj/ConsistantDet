@@ -16,12 +16,13 @@ model = dict(
         num_outs=5,
         with_sfa_loss=True,
         with_orig=True,
-        orig_loss_weight=0.5,
+        orig_loss_weight=1.0,
         only_sfa_result=False,
         only_orig_result=False,
         segm_out_flag=0,
         with_rpn_clip=True,
-        loss_weight = 1.0),
+        loss_weight = 1.0,
+        aug_channels=True),
     rpn_head=dict(
         type='RPNHead',
         in_channels=256,
@@ -148,7 +149,7 @@ data = dict(
         with_label=False,
         test_mode=True))
 # optimizer
-optimizer = dict(type='SGD', lr=0.0075, momentum=0.9, weight_decay=0.0001)
+optimizer = dict(type='SGD', lr=0.01, momentum=0.9, weight_decay=0.0001)
 optimizer_config = dict(grad_clip=dict(max_norm=35, norm_type=2))
 # learning policy
 lr_config = dict(
@@ -170,7 +171,7 @@ log_config = dict(
 total_epochs = 12
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
-work_dir = './work_dirs/sfa_mask_rcnn_r50_fpn_1x'
+work_dir = './work_dirs/sfa_mask_rcnn_r50_fpn_1x_interp'
 load_from = None
 resume_from = None
 workflow = [('train', 1)]

@@ -3,6 +3,7 @@ import numpy as np
 import pycocotools.mask as mask_util
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from ..registry import HEADS
 from ..utils import ConvModule
@@ -108,7 +109,7 @@ class FCNMaskHead(nn.Module):
         return loss
 
     def get_seg_masks(self, mask_pred, det_bboxes, det_labels, rcnn_test_cfg,
-                      ori_shape, scale_factor, rescale):
+                      ori_shape, scale_factor, rescale, is_orig=False):
         """Get segmentation masks from mask_pred and bboxes.
 
         Args:
@@ -156,6 +157,8 @@ class FCNMaskHead(nn.Module):
             bbox_mask = (bbox_mask > rcnn_test_cfg.mask_thr_binary).astype(
                 np.uint8)
             im_mask[bbox[1]:bbox[1] + h, bbox[0]:bbox[0] + w] = bbox_mask
+            if is_orig and not rescale:
+                im_mask = F.interpolate(im_mask, scale_factor =2, mode='nearest')
             rle = mask_util.encode(
                 np.array(im_mask[:, :, np.newaxis], order='F'))[0]
             cls_segms[label - 1].append(rle)
