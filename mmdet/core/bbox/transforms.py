@@ -154,3 +154,27 @@ def bbox2result(bboxes, labels, num_classes):
         bboxes = bboxes.cpu().numpy()
         labels = labels.cpu().numpy()
         return [bboxes[labels == i, :] for i in range(num_classes - 1)]
+
+def bbox_scale(bboxes, scale_factor = 1.5, img_shape=None):
+    w = bboxes[:, 2] - bboxes[:, 0] + 1.
+    h = bboxes[:, 3] - bboxes[:, 1] + 1.
+
+    x_ctr = bboxes[:, 0]  + w * 0.5
+    y_ctr = bboxes[:, 1]  + h * 0.5
+
+    s_w = w * scale_factor
+    s_h = h * scale_factor
+
+    s_x1 = x_ctr - s_w * 0.5
+    s_y1 = y_ctr - s_h * 0.5
+    s_x2 = x_ctr + s_w * 0.5
+    s_y2 = y_ctr + s_h * 0.5
+
+    s_x1 = s_x1.clamp(min=0, max=img_shape[1] - 1)
+    s_y1 = s_y1.clamp(min=0, max=img_shape[0] - 1)
+    s_x2 = s_x2.clamp(min=0, max=img_shape[1] - 1)
+    s_y2 = s_y2.clamp(min=0, max=img_shape[0] - 1)
+
+    scaled_bboxes = torch.stack([s_x1, s_y1, s_x2, s_y2], dim=-1).view_as(bboxes)
+
+    return scaled_bboxes

@@ -230,7 +230,7 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
 
         if hasattr(self.neck, 'with_sfa') and self.neck.with_sfa and self.neck.with_sfa_loss :
             if self.neck.with_rpn_clip:
-                loss_sfa = self.neck.loss(x[0][0], x_stage, stage=1, proposal=rois_sfa)
+                loss_sfa = self.neck.loss(x[0][0], x_stage, stage=1, proposal=gt_bboxes)
             else:
                 loss_sfa = self.neck.loss(x[0][0], x_stage, stage=1)
             losses.update(loss_sfa)
