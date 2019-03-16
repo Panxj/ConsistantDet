@@ -14,7 +14,7 @@ model = dict(
         in_channels=[256, 512, 1024, 2048],
         out_channels=256,
         num_outs=5,
-        with_sfa_loss=True,
+        with_sfa_loss=False,
         with_orig=False,
         with_sfa=True,
         orig_loss_weight=1.0,
@@ -23,9 +23,9 @@ model = dict(
         segm_out_flag=0,
         with_rpn_clip=True,
         loss_weight = 1.0,
-        aug_channels=False,
-        up_shuffle=True,
-        with_residual=True),
+        aug_channels=True,
+        up_shuffle=False,
+        with_residual=False),
     rpn_head=dict(
         type='RPNHead',
         in_channels=256,
@@ -131,7 +131,7 @@ data = dict(
         with_label=True),
     val=dict(
         type=dataset_type,
-        ann_file=data_root + 'annotations/instances_val2017.json',
+        ann_file=data_root + 'annotations/instances_val2017_0_50.json',
         img_prefix=data_root + 'val2017/',
         img_scale=(1333, 800),
         img_norm_cfg=img_norm_cfg,
@@ -152,7 +152,7 @@ data = dict(
         with_label=False,
         test_mode=True))
 # optimizer
-optimizer = dict(type='SGD', lr=0.01, momentum=0.9, weight_decay=0.0001)
+optimizer = dict(type='SGD', lr=0.0075, momentum=0.9, weight_decay=0.0001)
 optimizer_config = dict(grad_clip=dict(max_norm=35, norm_type=2))
 # learning policy
 lr_config = dict(
@@ -174,7 +174,7 @@ log_config = dict(
 total_epochs = 12
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
-work_dir = './work_dirs/sfa_mask_rcnn_r50_fpn_1x_interp'
+work_dir = './work_dirs/sfa_mask_rcnn_r50_fpn_1x_convT_tdshu'
 load_from = None
 resume_from = None
 workflow = [('train', 1)]
