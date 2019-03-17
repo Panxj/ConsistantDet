@@ -311,9 +311,9 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
                     return bbox_results_sfa, segm_results_sfa
             elif self.neck.with_orig and self.neck.only_orig_result:
                 proposal_list_orig = self.simple_test_rpn(
-                    x[1], img_meta_orig, self.test_cfg.rpn) if proposals is None else proposals
+                    x[-1], img_meta_orig, self.test_cfg.rpn) if proposals is None else proposals
                 det_bboxes_orig, det_labels_orig = self.simple_test_bboxes(
-                    x[1], img_meta_orig, proposal_list_orig, self.test_cfg.rcnn, rescale=rescale)
+                    x[-1], img_meta_orig, proposal_list_orig, self.test_cfg.rcnn, rescale=rescale)
                 if not  rescale:
                     bbox_results_orig = bbox2result(det_bboxes_orig * 2.0, det_labels_orig,
                                                     self.bbox_head.num_classes)
@@ -325,7 +325,8 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
                     return bbox_results_orig
                 else:
                     segm_results_orig = self.simple_test_mask(
-                        x[1], img_meta_orig, det_bboxes_orig, det_labels_orig, rescale=rescale, is_orig=True)
+                        x[-1], img_meta_orig, det_bboxes_orig, det_labels_orig, rescale=rescale,
+                        is_orig=True and self.neck.with_sfa)
 
                     return bbox_results_orig, segm_results_orig
             else:
@@ -333,10 +334,10 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
                     x[0], img_meta, self.test_cfg.rpn) if proposals is None else proposals
 
                 proposal_list_orig = self.simple_test_rpn(
-                    x[1], img_meta_orig, self.test_cfg.rpn) if proposals is None else proposals
+                    x[-1], img_meta_orig, self.test_cfg.rpn) if proposals is None else proposals
 
                 det_bboxes, det_labels= self.simple_test_bboxes_for_sfa_with_orig(
-                    x[0], x[1], img_meta, img_meta_orig, proposal_list_sfa, proposal_list_orig,
+                    x[0], x[-1], img_meta, img_meta_orig, proposal_list_sfa, proposal_list_orig,
                     self.test_cfg.rcnn, rescale=rescale)
                 bbox_results = bbox2result(det_bboxes, det_labels,
                                                self.bbox_head.num_classes)
@@ -344,7 +345,7 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
                     return bbox_results
                 else:
                     segm_results = self.simple_test_mask_for_sfa_with_orig(
-                        x[0], x[1], img_meta, img_meta_orig, det_bboxes, det_labels, rescale=rescale,
+                        x[0], x[-1], img_meta, img_meta_orig, det_bboxes, det_labels, rescale=rescale,
                         out_flag=self.neck.segm_out_flag)
                     return bbox_results, segm_results
 
