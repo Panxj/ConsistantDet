@@ -30,6 +30,7 @@ class SFA_FPN(nn.Module):
                  loss_weight=1.0,
                  aug_channels=True,
                  up_shuffle=False,
+                 l_td_cat=True,
                  with_residual=False):
         super(SFA_FPN, self).__init__()
         assert isinstance(in_channels, list)
@@ -52,6 +53,7 @@ class SFA_FPN(nn.Module):
         self.orig_loss_weight = orig_loss_weight
         self.aug_channels = aug_channels
         self.up_shufle=up_shuffle
+        self.l_td_cat=l_td_cat
         self.with_residual = with_residual
         if end_level == -1:
             self.backbone_end_level = self.num_ins
@@ -66,7 +68,8 @@ class SFA_FPN(nn.Module):
         self.add_extra_convs = add_extra_convs
 
         self.sfa_l_ups = nn.ModuleList()
-        self.sfa_l_1x1_mixs = nn.ModuleList()
+        if self.l_td_cat:
+            self.sfa_l_1x1_mixs = nn.ModuleList()
         self.sfa_l_dim_reds = nn.ModuleList()
         self.sfa_tp_convs = nn.ModuleList()
         self.lateral_convs = nn.ModuleList()
@@ -94,50 +97,72 @@ class SFA_FPN(nn.Module):
                             inplace=False) if i + 1 < self.backbone_end_level else None
                         self.sfa_l_dim_reds.append(sfa_l_reduce_dim)
                     else:
-                        sfa_l_up = nn.Sequential(
-                            nn.Conv2d(in_channels[i], out_channels, 1),
-                            nn.ReLU(inplace=True),
-                            nn.Conv2d(out_channels, out_channels * 4, 3, padding=1),
-                            nn.ReLU(inplace=True),
-                            nn.PixelShuffle(upscale_factor=2)
-                        )
-                        sfa_td_conv = ConvModule(
-                            out_channels,
-                            out_channels,
-                            1,
-                            normalize=normalize,
-                            bias=self.with_bias,
-                            activation=self.activation,
-                            inplace=False) if i + 1 < self.backbone_end_level else None
+                        if self.l_td_cat:
+                            sfa_l_up = nn.Sequential(
+                                nn.PixelShuffle(upscale_factor=2),
+                                nn.Conv2d(in_channels[i] //4, in_channels[i], 3, padding=1)
+                            ) if i == self.backbone_end_level -1 else nn.Sequential(
+                                nn.PixelShuffle(upscale_factor=2),
+                                nn.Conv2d(in_channels[i] //4, in_channels[i]//2, 3, padding=1)
+                            )
+                            sfa_td_conv = nn.Sequential(
+                                nn.PixelShuffle(upscale_factor=2),
+                                nn.Conv2d(in_channels[i + 1] // 4, in_channels[i] // 2, 1)
+                            ) if i + 1 < self.backbone_end_level else None
+                            sfa_l_1x1_mix = ConvModule(
+                                in_channels[i],
+                                in_channels[i],
+                                1,
+                                normalize=normalize,
+                                bias=self.with_bias,
+                                activation=self.activation,
+                                inplace=False) if i + 1 < self.backbone_end_level else None
+                        else:
+                            sfa_l_up = nn.Sequential(
+                                nn.PixelShuffle(upscale_factor=2),
+                                nn.Conv2d(in_channels[i] // 4, in_channels[i], 3, padding=1)
+                            )
+                            sfa_td_conv = nn.Sequential(
+                                nn.PixelShuffle(upscale_factor=2),
+                                nn.Conv2d(in_channels[i + 1] // 4, in_channels[i] // 2, 1))
+                        # sfa_td_conv = ConvModule(
+                        #     out_channels,
+                        #     out_channels,
+                        #     1,
+                        #     normalize=normalize,
+                        #     bias=self.with_bias,
+                        #     activation=self.activation,
+                        #     inplace=False) if i + 1 < self.backbone_end_level else None
                 else:
                     if self.aug_channels:
-                        sfa_l_up = nn.ConvTranspose2d(
-                            in_channels[i],
-                            in_channels[i],
-                            3,
-                            stride=2,
-                            padding=1,
-                            output_padding=1
-                        ) if i == self.backbone_end_level -1 else nn.ConvTranspose2d(
-                            in_channels[i],
-                            in_channels[i]//2,
-                            3,
-                            stride=2,
-                            padding=1,
-                            output_padding=1
-                        )
-                        sfa_td_conv = nn.Sequential(
-                            nn.PixelShuffle(upscale_factor=2),
-                            nn.Conv2d(in_channels[i+1]//4, in_channels[i]//2, 1)
-                        ) if i+1 < self.backbone_end_level else None
-                        sfa_l_1x1_mix = ConvModule(
-                            in_channels[i],
-                            in_channels[i],
-                            1,
-                            normalize=normalize,
-                            bias=self.with_bias,
-                            activation=self.activation,
-                            inplace=False) if i+1 < self.backbone_end_level else None
+                        if self.l_td_cat:
+                            sfa_l_up = nn.ConvTranspose2d(
+                                in_channels[i],
+                                in_channels[i],
+                                3,
+                                stride=2,
+                                padding=1,
+                                output_padding=1
+                            ) if i == self.backbone_end_level -1 else nn.ConvTranspose2d(
+                                in_channels[i],
+                                in_channels[i]//2,
+                                3,
+                                stride=2,
+                                padding=1,
+                                output_padding=1
+                            )
+                            sfa_td_conv = nn.Sequential(
+                                nn.PixelShuffle(upscale_factor=2),
+                                nn.Conv2d(in_channels[i+1]//4, in_channels[i]//2, 1)
+                            ) if i+1 < self.backbone_end_level else None
+                            sfa_l_1x1_mix = ConvModule(
+                                in_channels[i],
+                                in_channels[i],
+                                1,
+                                normalize=normalize,
+                                bias=self.with_bias,
+                                activation=self.activation,
+                                inplace=False) if i+1 < self.backbone_end_level else None
                         # sfa_td_conv = ConvModule(
                         #     in_channels[i+1],
                         #     in_channels[i],
@@ -188,9 +213,7 @@ class SFA_FPN(nn.Module):
                 inplace=False)
 
 
-
             self.fpn_convs.append(fpn_conv)
-
 
             # lvl_id = i - self.start_level
             # setattr(self, 'lateral_conv{}'.format(lvl_id), l_conv)

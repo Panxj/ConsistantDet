@@ -150,9 +150,11 @@ class FCNMaskHead(nn.Module):
                 bbox = (bboxes[i, :] / scale_factor * 2.0).astype(np.int32)
             else:
                 bbox = (bboxes[i, :] / scale_factor).astype(np.int32)
+
             label = labels[i]
             w = max(bbox[2] - bbox[0] + 1, 1)
             h = max(bbox[3] - bbox[1] + 1, 1)
+
 
             if not self.class_agnostic:
                 mask_pred_ = mask_pred[i, label, :, :]
