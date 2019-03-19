@@ -20,6 +20,7 @@ class SFA_FPN(nn.Module):
                  normalize=None,
                  activation=None,
                  with_sfa_loss=False,
+                 with_ss_loss=False,
                  with_orig =False,
                  with_sfa = False,
                  orig_loss_weight=1.0,
@@ -55,6 +56,7 @@ class SFA_FPN(nn.Module):
         self.up_shufle=up_shuffle
         self.l_td_cat=l_td_cat
         self.with_residual = with_residual
+        self.with_ss_loss = with_ss_loss
         if end_level == -1:
             self.backbone_end_level = self.num_ins
             assert num_outs >= self.num_ins - start_level
@@ -248,7 +250,7 @@ class SFA_FPN(nn.Module):
             else:
                 self.sfa_conv_top = ConvModule(
                     out_channels,
-                    out_channels // 4,
+                    out_channels//4,
                     1,
                     bias=self.with_bias,
                     activation=self.activation,
@@ -352,9 +354,9 @@ class SFA_FPN(nn.Module):
                         # BUG: we should add relu before each extra conv
                         outs.append(self.fpn_convs[i](outs[-1]))
             final_outs.append(outs)
-        return tuple(final_outs)
+        return tuple(final_outs), sfa_laterals_1[0]
 
-    def loss(self, up_x, large_x, stage=1, proposal=None,stride=4):
+    def loss(self, up_x, large_x, stage=1, proposal=None,stride=4, pro_flag=1):
         losses = dict()
         if stage == 1:
             up_x = self.sfa_conv_top(up_x)
@@ -364,41 +366,47 @@ class SFA_FPN(nn.Module):
             if proposal is None:
                 losses['sfa_loss'] = F.mse_loss(up_x[:,:,:l_feat_h,:l_feat_w], l_x, reduction='mean')
             else:
-                loss = 0
-                avg_size = 0
-                num_imgs = len(proposal)
-                for i in range(num_imgs):
-                    proposals = proposal[i]
-                    avg_size += proposals.size(0)
-                    proposals = (proposals / stride).round()
-                    proposals = bbox_scale(proposals, scale_factor=1.5, img_shape=[l_feat_h, l_feat_w])
-                    proposals = proposals.int()
-                    for j in range(proposals.size(0)):
-                        loss += F.mse_loss(up_x[i][:, proposals[j, 1]:(proposals[j, 3] + 1),
-                                           proposals[j, 0]:(proposals[j, 2] + 1)],
-                                           l_x[i][:, proposals[j, 1]:(proposals[j, 3] + 1),
-                                           proposals[j, 0]:(proposals[j, 2] + 1)],
-                                           reduction='mean')
-                loss /= avg_size
-                loss *= self.loss_weight
-                # loss = 0
-                # avg_size = proposal.size(0)
-                # proposal[:,1:] = (proposal[:,1:]/stride).round()
-                # proposal = proposal.int()
-                # proposal[:, 1] = proposal[:, 1].clamp(0, l_feat_w - 1)
-                # proposal[:, 3] = proposal[:, 3].clamp(0, l_feat_w - 1)
-                # proposal[:, 2] = proposal[:, 2].clamp(0, l_feat_h - 1)
-                # proposal[:, 4] = proposal[:, 4].clamp(0, l_feat_h - 1)
-                # num_imgs = l_x.size(0)
-                # for i in range(num_imgs):
-                #     inds = torch.nonzero(proposal[:,0] == i).squeeze()
-                #     proposals = proposal[inds,:][:,1:]
-                #     for j in range(proposals.size(0)):
-                #         loss += F.mse_loss(up_x[i][:, proposals[j,1]:(proposals[j,3]+1),
-                #                            proposals[j,0]:(proposals[j,2]+1)],
-                #                            l_x[i][:, proposals[j,1]:(proposals[j,3]+1),
-                #                            proposals[j,0]:(proposals[j,2]+1)],
-                #                            reduction='mean')
-                # loss /= avg_size
-                # loss *= self.loss_weight
+                if pro_flag == 0:
+                    loss = 0
+                    avg_size = 0
+                    num_imgs = len(proposal)
+                    for i in range(num_imgs):
+                        proposals = proposal[i]
+                        avg_size += proposals.size(0)
+                        proposals = (proposals / stride).round()
+                        proposals = bbox_scale(proposals, scale_factor=1.5, img_shape=[l_feat_h, l_feat_w])
+                        proposals = proposals.int()
+                        for j in range(proposals.size(0)):
+                            loss += F.mse_loss(up_x[i][:, proposals[j, 1]:(proposals[j, 3] + 1),
+                                               proposals[j, 0]:(proposals[j, 2] + 1)],
+                                               l_x[i][:, proposals[j, 1]:(proposals[j, 3] + 1),
+                                               proposals[j, 0]:(proposals[j, 2] + 1)],
+                                               reduction='mean')
+                    loss /= avg_size
+                    loss *= self.loss_weight
+                    losses['sfa_loss'] = loss
+                elif pro_flag == 1:
+                    loss = 0
+                    avg_size = proposal.size(0)
+                    proposal[:,1:] = (proposal[:,1:]/stride).round()
+                    proposal = proposal.int()
+                    proposal[:, 1] = proposal[:, 1].clamp(0, l_feat_w - 1)
+                    proposal[:, 3] = proposal[:, 3].clamp(0, l_feat_w - 1)
+                    proposal[:, 2] = proposal[:, 2].clamp(0, l_feat_h - 1)
+                    proposal[:, 4] = proposal[:, 4].clamp(0, l_feat_h - 1)
+                    num_imgs = l_x.size(0)
+                    for i in range(num_imgs):
+                        inds = torch.nonzero(proposal[:,0] == i).squeeze()
+                        proposals = proposal[inds,:][:,1:]
+                        for j in range(proposals.size(0)):
+                            loss += F.mse_loss(up_x[i][:, proposals[j,1]:(proposals[j,3]+1),
+                                               proposals[j,0]:(proposals[j,2]+1)],
+                                               l_x[i][:, proposals[j,1]:(proposals[j,3]+1),
+                                               proposals[j,0]:(proposals[j,2]+1)],
+                                               reduction='mean')
+                    loss /= avg_size
+                    loss *= self.loss_weight
+                    losses['sfa_loss'] = loss
+                else:
+                    raise Exception('Not implementation.')
         return losses

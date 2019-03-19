@@ -98,7 +98,7 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
             # gt_bboxes_orig, gt_masks_orig = self.down_gt_bboxes_masks(gt_bboxes, gt_masks)
             img_meta_up = self.up_img_meta(img_meta)
             gt_bboxes_up, gt_masks_up = self.up_gt_bboxes_masks(gt_bboxes, gt_masks)
-            x = self.extract_feat(img)
+            x, sfa_x= self.extract_feat(img)
             if self.neck.with_sfa and self.neck.with_sfa_loss:
                 x_stage = self.extract_certain_feat(img, stage=1)
 
@@ -232,10 +232,19 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
                 losses.update(loss_bbox)
 
         if hasattr(self.neck, 'with_sfa') and self.neck.with_sfa and self.neck.with_sfa_loss :
-            if self.neck.with_rpn_clip:
-                loss_sfa = self.neck.loss(x[0][0], x_stage, stage=1, proposal=gt_bboxes)
+            if self.nexk.with_ss_loss:
+                sfa_bbox_feats = self.bbox_roi_extractor(
+                    [sfa_x], rois_sfa)
+                sfa_cls_score, _ = self.bbox_head(sfa_bbox_feats)
+                loss_sfa = self.bbox_head.loss(cls_score, None,
+                                                *bbox_targets, scale='sfa', src='sfa_c1')
             else:
-                loss_sfa = self.neck.loss(x[0][0], x_stage, stage=1)
+                if self.neck.with_rpn_clip:
+                    # pro_flag = 1 for rois
+                    # pro_flag = 0 for gt
+                    loss_sfa = self.neck.loss(sfa_x, x_stage, stage=1, proposal=rois_sfa, pro_flag=1)
+                else:
+                    loss_sfa = self.neck.loss(x[0][0], x_stage, stage=1)
             losses.update(loss_sfa)
         # mask head forward and loss
         if self.with_mask:
