@@ -236,7 +236,7 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
                 sfa_bbox_feats = self.bbox_roi_extractor(
                     [sfa_x], rois_sfa)
                 sfa_cls_score, _ = self.bbox_head(sfa_bbox_feats)
-                loss_sfa = self.bbox_head.loss(cls_score, None,
+                loss_sfa = self.bbox_head.loss(sfa_cls_score, None,
                                                 *bbox_targets, scale='sfa', src='sfa_c1')
             else:
                 if self.neck.with_rpn_clip:
