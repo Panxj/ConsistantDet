@@ -232,7 +232,7 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
                 losses.update(loss_bbox)
 
         if hasattr(self.neck, 'with_sfa') and self.neck.with_sfa and self.neck.with_sfa_loss :
-            if self.nexk.with_ss_loss:
+            if self.neck.with_ss_loss:
                 sfa_bbox_feats = self.bbox_roi_extractor(
                     [sfa_x], rois_sfa)
                 sfa_cls_score, _ = self.bbox_head(sfa_bbox_feats)
