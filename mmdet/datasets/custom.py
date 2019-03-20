@@ -202,10 +202,11 @@ class CustomDataset(Dataset):
             img, img_scale, flip, keep_ratio=self.resize_keep_ratio)
         img_orig = img_orig.copy()
         if self.with_sfa_loss:
-            img_scale_up = tuple([scale*2 for scale in img_scale])
-            img_up, img_shape_up, pad_shape_up, scale_factor_up = self.img_transform(
+            img_scale_up = tuple([img_scale[0]*2-1, img_scale[1]*2])
+            img_up, img_shape_up, pad_shape_tmp, scale_factor_up = self.img_transform(
                 img, img_scale_up, flip, keep_ratio=self.resize_keep_ratio)
-            pad_shape_up=tuple([pad_shape[0]*2, pad_shape[1]*2, pad_shape[2]])
+            pad_shape_up=tuple([int(np.ceil(pad_shape_tmp[0]/64)*64),
+                                int(np.ceil(pad_shape_tmp[1]/64)*64), pad_shape_tmp[2]])
             img_up = img_up.copy()
         if self.proposals is not None:
             proposals = self.bbox_transform(proposals, img_shape, scale_factor,
