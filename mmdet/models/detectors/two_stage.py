@@ -1,12 +1,14 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
+import mmcv
+from mmcv.parallel import DataContainer as DC
 from .base import BaseDetector
 from .test_mixins import RPNTestMixin, BBoxTestMixin, MaskTestMixin
 from .. import builder
 from ..registry import DETECTORS
 from mmdet.core import bbox2roi, bbox2result, build_assigner, build_sampler
+from mmdet.datasets.utils import to_tensor
 import numpy as np
 import copy
 import cv2
@@ -84,11 +86,16 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
     def forward_train(self,
                       img,
                       img_meta,
+                      img_up,
                       gt_bboxes,
                       gt_bboxes_ignore,
                       gt_labels,
                       gt_masks=None,
-                      proposals=None):
+                      gt_masks_up=None,
+                      proposals=None,
+                      proposals_up=None,
+                      img_meta_up=None,
+                      gt_bboxes_up=None,):
         if hasattr(self.neck, 'with_sfa'):
             # down_img_h, down_img_w = img.size(2)//2, img.size(3)//2
             # down_img_h = int(np.ceil(down_img_h / 32) * 32)
@@ -96,12 +103,16 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
             # down_img = F.interpolate(img, size=(down_img_h, down_img_w) ,mode='bilinear', align_corners=True)
             # img_meta_orig = self.down_img_meta(img_meta)
             # gt_bboxes_orig, gt_masks_orig = self.down_gt_bboxes_masks(gt_bboxes, gt_masks)
-            img_meta_up = self.up_img_meta(img_meta)
-            gt_bboxes_up, gt_masks_up = self.up_gt_bboxes_masks(gt_bboxes, gt_masks)
             x, sfa_x= self.extract_feat(img)
             if self.neck.with_sfa and self.neck.with_sfa_loss:
-                x_stage = self.extract_certain_feat(img, stage=1)
-
+                img_ten_h, img_ten_w = img.size(2), img.size(3)
+                img_up_ten_h, img_up_ten_w = img_up.size(2), img_up.size(3)
+                if img_ten_h*2 != img_up_ten_h or img_ten_w *2 != img_up_ten_w:
+                    img_up_tmp = torch.zeros((img.size(0), img.size(1), img.size(2)*2,
+                                              img.size(3)*2)).cuda(img.device)
+                    img_up_tmp[:,:,:img_up_ten_h, :img_up_ten_w] = img_up
+                    img_up=img_up_tmp
+                x_stage = self.extract_certain_feat(img_up)
         else:
             x = self.extract_feat(img)
         losses = dict()
@@ -302,7 +313,7 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
             # down_img = F.interpolate(img, size=(down_img_h, down_img_w), mode='bilinear', align_corners=True)
             # img_meta_orig = self.down_img_meta(img_meta)
             img_meta_up = self.up_img_meta(img_meta)
-            x = self.extract_feat(img)
+            x,_ = self.extract_feat(img)
         else:
             x = self.extract_feat(img)
 
@@ -429,29 +440,5 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
             gt_masks_orig.append(gt_masks[i][:, 0::2, 0::2])
         return gt_bboxes_orig, gt_masks_orig
 
-    def up_img_meta(self, img_meta):
-        key_word = ['img_shape', 'pad_shape']
-        img_meta_up = copy.deepcopy(img_meta)
-        for i in range(len(img_meta)):
-            for key in key_word:
-                orig_key_v = list(img_meta[i][key])
-                for j in range(len(orig_key_v)-1):
-                    orig_key_v[j] = orig_key_v[j] * 2
-                img_meta_up[i][key] = tuple(orig_key_v)
-            img_meta_up[i]['scale_factor'] = img_meta[i]['scale_factor']*2
-        return img_meta_up
-
-    def up_gt_bboxes_masks(self, gt_bboxes, gt_masks):
-        gt_bboxes_up = []
-        gt_masks_up = []
-        num_imgs = len(gt_bboxes)
-        for i in range(num_imgs):
-            gt_bboxes_up.append(gt_bboxes[i] * 2)
-            gt_masks_up_i = cv2.resize(gt_masks[i].transpose(1, 2, 0), dsize=None, fx=2,
-                                       fy=2, interpolation=cv2.INTER_NEAREST)
-            h, w = gt_masks_up_i.shape[:2]
-            gt_masks_up_i = gt_masks_up_i.reshape(h, w, -1)
-            gt_masks_up.append(gt_masks_up_i.transpose(2, 0, 1))
-        return gt_bboxes_up, gt_masks_up
 
 

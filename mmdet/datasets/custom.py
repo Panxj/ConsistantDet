@@ -49,10 +49,11 @@ class CustomDataset(Dataset):
                  with_label=True,
                  extra_aug=None,
                  resize_keep_ratio=True,
-                 test_mode=False):
+                 test_mode=False,
+                 with_sfa_loss=True):
         # prefix of images path
         self.img_prefix = img_prefix
-
+        self.with_sfa_loss = with_sfa_loss
         # load annotations (and proposals)
         self.img_infos = self.load_annotations(ann_file)
         if proposal_file is not None:
@@ -197,22 +198,39 @@ class CustomDataset(Dataset):
         # apply transforms
         flip = True if np.random.rand() < self.flip_ratio else False
         img_scale = random_scale(self.img_scales)  # sample a scale
-        img, img_shape, pad_shape, scale_factor = self.img_transform(
+        img_orig, img_shape, pad_shape, scale_factor = self.img_transform(
             img, img_scale, flip, keep_ratio=self.resize_keep_ratio)
-        img = img.copy()
+        img_orig = img_orig.copy()
+        if self.with_sfa_loss:
+            img_scale_up = tuple([scale*2 for scale in img_scale])
+            img_up, img_shape_up, pad_shape_up, scale_factor_up = self.img_transform(
+                img, img_scale_up, flip, keep_ratio=self.resize_keep_ratio)
+            pad_shape_up=tuple([pad_shape[0]*2, pad_shape[1]*2, pad_shape[2]])
+            img_up = img_up.copy()
         if self.proposals is not None:
             proposals = self.bbox_transform(proposals, img_shape, scale_factor,
                                             flip)
             proposals = np.hstack(
                 [proposals, scores]) if scores is not None else proposals
+            if self.with_sfa_loss:
+                proposals_up = self.bbox_transform(proposals, img_shape_up, scale_factor_up,
+                                                flip)
+                proposals_up = np.hstack(
+                    [proposals_up, scores]) if scores is not None else proposals
         gt_bboxes = self.bbox_transform(gt_bboxes, img_shape, scale_factor,
                                         flip)
+        if self.with_sfa_loss:
+            gt_bboxes_up = self.bbox_transform(gt_bboxes, img_shape_up, scale_factor_up,
+                                            flip)
         if self.with_crowd:
             gt_bboxes_ignore = self.bbox_transform(gt_bboxes_ignore, img_shape,
                                                    scale_factor, flip)
         if self.with_mask:
             gt_masks = self.mask_transform(ann['masks'], pad_shape,
                                            scale_factor, flip)
+            if self.with_sfa_loss:
+                gt_masks_up = self.mask_transform(ann['masks'], pad_shape_up,
+                                               scale_factor_up, flip)
 
         ori_shape = (img_info['height'], img_info['width'], 3)
         img_meta = dict(
@@ -222,18 +240,38 @@ class CustomDataset(Dataset):
             scale_factor=scale_factor,
             flip=flip)
 
-        data = dict(
-            img=DC(to_tensor(img), stack=True),
-            img_meta=DC(img_meta, cpu_only=True),
-            gt_bboxes=DC(to_tensor(gt_bboxes)))
+        if self.with_sfa_loss:
+            img_meta_up = dict(
+                ori_shape=ori_shape,
+                img_shape=img_shape_up,
+                pad_shape=pad_shape_up,
+                scale_factor=scale_factor_up,
+                flip=flip)
+            data = dict(
+                img=DC(to_tensor(img_orig), stack=True),
+                img_meta=DC(img_meta, cpu_only=True),
+                gt_bboxes=DC(to_tensor(gt_bboxes)),
+                img_up=DC(to_tensor(img_up), stack=True),
+                img_meta_up=DC(img_meta_up, cpu_only=True),
+                gt_bboxes_up=DC(to_tensor(gt_bboxes_up)))
+        else:
+            data = dict(
+                img=DC(to_tensor(img_orig), stack=True),
+                img_meta=DC(img_meta, cpu_only=True),
+                gt_bboxes=DC(to_tensor(gt_bboxes)))
         if self.proposals is not None:
             data['proposals'] = DC(to_tensor(proposals))
+            if self.with_sfa_loss:
+                data['proposals_up'] = DC(to_tensor(proposals_up))
         if self.with_label:
             data['gt_labels'] = DC(to_tensor(gt_labels))
         if self.with_crowd:
             data['gt_bboxes_ignore'] = DC(to_tensor(gt_bboxes_ignore))
         if self.with_mask:
             data['gt_masks'] = DC(gt_masks, cpu_only=True)
+            if self.with_sfa_loss:
+                data['gt_masks_up'] = DC(gt_masks_up, cpu_only=True)
+
         return data
 
     def prepare_test_img(self, idx):
