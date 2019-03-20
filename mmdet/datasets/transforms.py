@@ -102,9 +102,13 @@ class MaskTransform(object):
         ]
         if flip:
             masks = [mask[:, ::-1] for mask in masks]
-        padded_masks = [
-            mmcv.impad(mask, pad_shape[:2], pad_val=0) for mask in masks
-        ]
+        padded_masks = []
+        for mask in masks:
+            mask_h = min(mask.shape[0], pad_shape[0])
+            mask_w = min(mask.shape[1], pad_shape[1])
+            mask=mask[:mask_h, :mask_w]
+            padded_masks.append(mmcv.impad(mask, pad_shape[:2], pad_val=0))
+
         padded_masks = np.stack(padded_masks, axis=0)
         return padded_masks
 
