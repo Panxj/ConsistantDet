@@ -362,7 +362,9 @@ class SFA_FPN(nn.Module):
             up_x = self.sfa_conv_top(up_x)
         assert isinstance(large_x,list)
         for l_x in large_x:
-            l_feat_h, l_feat_w = l_x.size(2), l_x.size(3)
+            l_feat_h = min(l_x.size(2), up_x.size(3))
+            l_feat_w = min(l_x.size(3), up_x.size(3))
+
             if proposal is None:
                 losses['sfa_loss'] = F.mse_loss(up_x[:,:,:l_feat_h,:l_feat_w], l_x, reduction='mean')
             else:
