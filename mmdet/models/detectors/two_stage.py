@@ -105,13 +105,13 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
             # gt_bboxes_orig, gt_masks_orig = self.down_gt_bboxes_masks(gt_bboxes, gt_masks)
             x, sfa_x= self.extract_feat(img)
             if self.neck.with_sfa and self.neck.with_sfa_loss:
-                img_ten_h, img_ten_w = img.size(2), img.size(3)
-                img_up_ten_h, img_up_ten_w = img_up.size(2), img_up.size(3)
-                if img_ten_h*2 != img_up_ten_h or img_ten_w *2 != img_up_ten_w:
-                    img_up_tmp = torch.zeros((img.size(0), img.size(1), img.size(2)*2,
-                                              img.size(3)*2)).cuda(img.device)
-                    img_up_tmp[:,:,:img_up_ten_h, :img_up_ten_w] = img_up
-                    img_up=img_up_tmp
+                # img_ten_h, img_ten_w = img.size(2), img.size(3)
+                # img_up_ten_h, img_up_ten_w = img_up.size(2), img_up.size(3)
+                # if img_ten_h*2 != img_up_ten_h or img_ten_w *2 != img_up_ten_w:
+                #     img_up_tmp = torch.zeros((img.size(0), img.size(1), img.size(2)*2,
+                #                               img.size(3)*2)).cuda(img.device)
+                #     img_up_tmp[:,:,:img_up_ten_h, :img_up_ten_w] = img_up
+                #     img_up=img_up_tmp
                 x_stage = self.extract_certain_feat(img_up)
         else:
             x = self.extract_feat(img)
