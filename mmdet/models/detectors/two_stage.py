@@ -105,9 +105,14 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
             # gt_bboxes_orig, gt_masks_orig = self.down_gt_bboxes_masks(gt_bboxes, gt_masks)
             x, sfa_x= self.extract_feat(img)
             if self.neck.with_sfa and self.neck.with_sfa_loss:
-                img_h, img_w = img.size(2), img.size(3)
-                img_up_h, img_up_w = img_up.size(2), img_up.size(3)
-                img_up_tmp = torch.zeros((img.size(0), img.size(1), img_h*2, img_w*2)).cuda(img.device)
+                up_tmp_size=(0,0,0)
+                B, C,img_up_h, img_up_w = img_up.size(0), img_up.size(1), img_up.size(2), img_up.size(3)
+                for i_up in range(len(img_meta_up)):
+                    up_tmp_size=tuple(np.maximum(up_tmp_size, img_meta_up[i_up]['pad_shape']))
+
+                img_up_tmp = torch.zeros((B,C)+up_tmp_size[:2]).cuda(img.device)
+                if up_tmp_size[0]<img_up_h or up_tmp_size[1] <img_up_w:
+                    print ('fuck')
                 img_up_tmp[:,:,:img_up_h, :img_up_w] = img_up
                 img_up=img_up_tmp
                 if img_up.size(2) != 2* img.size(2) or img_up.size(3) != 2*img.size(3):
