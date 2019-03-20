@@ -111,12 +111,14 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
                     up_tmp_size=tuple(np.maximum(up_tmp_size, img_meta_up[i_up]['pad_shape']))
 
                 img_up_tmp = torch.zeros((B,C)+up_tmp_size[:2]).cuda(img.device)
+                # if up_tmp_size[0] != 2 * img.size(2) or up_tmp_size[1] != 2 * img.size(3):
+                img_up_tmp[:, :, :img_up_h, :img_up_w] = img_up
                 if up_tmp_size[0]<img_up_h or up_tmp_size[1] <img_up_w:
                     print ('fuck')
                 img_up_tmp[:,:,:img_up_h, :img_up_w] = img_up
                 img_up=img_up_tmp
-                if img_up.size(2) != 2* img.size(2) or img_up.size(3) != 2*img.size(3):
-                    raise Exception("img.size:{}, img_up.size:{}".format(img.size(), img_up.size()))
+                # if img_up.size(2) != 2* img.size(2) or img_up.size(3) != 2*img.size(3):
+                #     raise Exception("img.size:{}, img_up.size:{}".format(img.size(), img_up.size()))
                 x_stage = self.extract_certain_feat(img_up)
         else:
             x = self.extract_feat(img)
