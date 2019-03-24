@@ -112,7 +112,6 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
 
                 img_up_tmp = torch.zeros((B,C)+up_tmp_size[:2]).cuda(img.device)
                 # if up_tmp_size[0] != 2 * img.size(2) or up_tmp_size[1] != 2 * img.size(3):
-                img_up_tmp[:, :, :img_up_h, :img_up_w] = img_up
                 if up_tmp_size[0]<img_up_h or up_tmp_size[1] <img_up_w:
                     print ('fuck')
                 img_up_tmp[:,:,:img_up_h, :img_up_w] = img_up

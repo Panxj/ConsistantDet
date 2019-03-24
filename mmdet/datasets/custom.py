@@ -232,6 +232,8 @@ class CustomDataset(Dataset):
             if self.with_sfa_loss:
                 gt_masks_up = self.mask_transform(ann['masks'], pad_shape_up,
                                                scale_factor_up, flip)
+                if pad_shape_up[0] != 2*pad_shape[0] or pad_shape_up[1] != 2*pad_shape[1]:
+                    gt_masks_up=gt_masks_up[:, :2*pad_shape[0], :2*pad_shape[1]]
 
         ori_shape = (img_info['height'], img_info['width'], 3)
         img_meta = dict(

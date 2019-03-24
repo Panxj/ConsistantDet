@@ -25,10 +25,14 @@ def mask_target_single(pos_proposals, pos_assigned_gt_inds, gt_masks, cfg):
             x1, y1, x2, y2 = bbox
             w = np.maximum(x2 - x1 + 1, 1)
             h = np.maximum(y2 - y1 + 1, 1)
-            # mask is uint8 both before and after resizing
-            target = mmcv.imresize(gt_mask[y1:y1 + h, x1:x1 + w],
-                                   (mask_size, mask_size))
-            mask_targets.append(target)
+            try:
+                # mask is uint8 both before and after resizing
+                target = mmcv.imresize(gt_mask[y1:y1 + h, x1:x1 + w],
+                                       (mask_size, mask_size))
+                mask_targets.append(target)
+            except:
+                print('fuck.')
+
         mask_targets = torch.from_numpy(np.stack(mask_targets)).float().to(
             pos_proposals.device)
     else:
