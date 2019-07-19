@@ -21,16 +21,19 @@ def rescale_dets_(detections, ratios, borders, sizes):
     np.clip(ys, 0, sizes[:, 0][:, None, None], out=ys)
 
 def decode(nnet, images, K, ae_threshold=0.5, kernel=3, num_dets=1000):
-    detections = nnet.test([images], ae_threshold=ae_threshold, test=True, K=K, kernel=kernel, num_dets=num_dets)[0]
-    return detections.data.cpu().numpy()
+    detections, tl_heat, br_heat = nnet.test([images], ae_threshold=ae_threshold, test=True, K=K, kernel=kernel, num_dets=num_dets)[:3]
+    tl_heat = torch.sigmoid(tl_heat)
+    br_heat = torch.sigmoid(br_heat)
+    return detections.data.cpu().numpy(), tl_heat.data.cpu().numpy(), br_heat.data.cpu().numpy()
 
 def cornernet(db, nnet, result_dir, debug=False, decode_func=decode):
     debug_dir = os.path.join(result_dir, "debug")
     if not os.path.exists(debug_dir):
         os.makedirs(debug_dir)
 
-    if db.split != "trainval2014":
-        db_inds = db.db_inds[:100] if debug else db.db_inds
+    if db.split != "train2017":
+        # db_inds = db.db_inds[:100] if debug else db.db_inds
+        db_inds = db.db_inds[:100] if debug else db.db_inds[:200]
     else:
         db_inds = db.db_inds[:100] if debug else db.db_inds[:5000]
 
@@ -136,7 +139,7 @@ def cornernet_inference(db, nnet, image, decode_func=decode):
         images -= im_mean
         images /= im_std
 
-        dets = decode_func(nnet, images, K, ae_threshold=ae_threshold, kernel=nms_kernel, num_dets=num_dets)
+        dets, tl_heats, br_heats = decode_func(nnet, images, K, ae_threshold=ae_threshold, kernel=nms_kernel, num_dets=num_dets)
         if test_flipped:
             dets[1, :, [0, 2]] = out_width - dets[1, :, [2, 0]]
             dets = dets.reshape(1, -1, 8)
@@ -172,5 +175,7 @@ def cornernet_inference(db, nnet, image, decode_func=decode):
         thresh = np.partition(scores, kth)[kth]
         for j in range(1, categories + 1):
             keep_inds     = (top_bboxes[j][:, -1] >= thresh)
-            top_bboxes[j] = top_bboxes[j][keep_inds]
+            top_bboxes[j] = top_bboxes[j][keep_inds]\
+    # for demo to check heatmaps
+    # return top_bboxes, tl_heats, br_heats
     return top_bboxes

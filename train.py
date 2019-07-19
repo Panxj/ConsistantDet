@@ -28,6 +28,7 @@ torch.backends.cudnn.benchmark = True
 def parse_args():
     parser = argparse.ArgumentParser(description="Training Script")
     parser.add_argument("cfg_file", help="config file", type=str)
+    parser.add_argument("--model", help="model name", default=None, type=str)
     parser.add_argument("--iter", dest="start_iter",
                         help="train at iteration i",
                         default=0, type=int)
@@ -205,8 +206,10 @@ def main(gpu, ngpus_per_node, args):
 
     config["system"]["snapshot_name"] = args.cfg_file
     system_config = SystemConfig().update_config(config["system"])
-
-    model_file  = "core.models.{}".format(args.cfg_file)
+    if args.model is not None:
+        model_file  = "core.models.{}".format(args.model)
+    else:
+        model_file  = "core.models.{}".format(args.cfg_file)
     model_file  = importlib.import_module(model_file)
     model       = model_file.model()
 

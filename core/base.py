@@ -21,8 +21,12 @@ class Base(object):
 
     def __call__(self, image, *args, **kwargs):
         categories = self._db.configs["categories"]
-        bboxes     = self._inference(image, *args, **kwargs)
-        return {self._db.cls2name(j): bboxes[j] for j in range(1, categories + 1)}
+        # ======== for drawing heat maps==============
+        bboxes, tl_heats, br_heats  = self._inference(image, *args, **kwargs)
+        return {self._db.cls2name(j): bboxes[j] for j in range(1, categories + 1)}, tl_heats,br_heats
+
+        # bboxes = self._inference(image, *args, **kwargs)
+        # return {self._db.cls2name(j): bboxes[j] for j in range(1, categories + 1)}
 
 def load_cfg(cfg_file):
     with open(cfg_file, "r") as f:

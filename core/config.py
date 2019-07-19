@@ -8,7 +8,7 @@ class SystemConfig(object):
         self._configs["sampling_function"] = "coco_detection"
 
         # Training Config
-        self._configs["display"]           = 5
+        self._configs["display"]           = 50
         self._configs["snapshot"]          = 400
         self._configs["stepsize"]          = 5000
         self._configs["learning_rate"]     = 0.001
@@ -99,7 +99,6 @@ class SystemConfig(object):
     @property
     def snapshot_dir(self):
         snapshot_dir = os.path.join(self.cache_dir, "nnet", self.snapshot_name)
-
         if not os.path.exists(snapshot_dir):
             os.makedirs(snapshot_dir)
         return snapshot_dir

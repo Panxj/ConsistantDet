@@ -122,12 +122,17 @@ class NetworkFactory(object):
             params = torch.load(f)
             self.model.load_state_dict(params)
 
-    def load_params(self, iteration):
-        cache_file = self.system_config.snapshot_file.format(iteration)
+    def load_params(self, iteration, model_dir=None):
+        if model_dir is None:
+            cache_file = self.system_config.snapshot_file.format(iteration)
+        else:
+            snapshot_dir = os.path.join(self.system_config.snapshot_dir, model_dir)
+            cache_file = os.path.join(snapshot_dir, self.system_config.snapshot_name + "_{}.pkl".format(iteration))
         print("loading model from {}".format(cache_file))
         with open(cache_file, "rb") as f:
             params = torch.load(f)
             self.model.load_state_dict(params)
+
 
     def save_params(self, iteration):
         cache_file = self.system_config.snapshot_file.format(iteration)

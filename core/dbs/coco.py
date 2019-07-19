@@ -61,8 +61,10 @@ class COCO(DETECTION):
             coco_dir = os.path.join(sys_config.data_dir, "coco")
 
             self._split     = {
-                "trainval": "trainval2014",
-                "minival":  "minival2014",
+                "train": "train2017",
+                "train_small": "train2017_0_100",
+                "val":  "val2017",
+                "val_small": "val2017_0_50",
                 "testdev":  "testdev2017"
             }[split]
             self._data_dir  = os.path.join(coco_dir, "images", self._split)

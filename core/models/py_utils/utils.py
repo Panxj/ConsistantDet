@@ -1,5 +1,11 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+import numpy as np
+import cv2
+from .DCNv2.dcn_v2 import DCNv2
+from .DCNv2.dcn_v2 import DCN
+from .DCNv2.dcn_v2 import dcn_v2_conv
 
 def _gather_feat(feat, ind, mask=None):
     dim  = feat.size(2)
@@ -185,11 +191,20 @@ class residual(nn.Module):
         return self.relu(bn2 + skip)
 
 class corner_pool(nn.Module):
-    def __init__(self, dim, pool1, pool2):
+    def __init__(self, dim, pool1, pool2, mode=0):
         super(corner_pool, self).__init__()
-        self._init_layers(dim, pool1, pool2)
+        self._init_layers(dim, pool1, pool2, mode=mode)
 
-    def _init_layers(self, dim, pool1, pool2):
+    def _init_layers(self, dim, pool1, pool2, mode=0):
+        self.mode = mode
+        if mode==0:
+            self.filter1 = corner_filter(128,128,0,4)
+            self.filter2 = corner_filter(128,128,1,4)
+        elif mode==1:
+            self.filter1 = corner_filter(128, 128, 2, 4)
+            self.filter2 = corner_filter(128, 128, 3, 4)
+        else:
+            raise Exception('Wrong mode number for class corner_filter.')
         self.p1_conv1 = convolution(3, dim, 128)
         self.p2_conv1 = convolution(3, dim, 128)
 
@@ -207,15 +222,34 @@ class corner_pool(nn.Module):
 
     def forward(self, x):
         # pool 1
+        # image_name='000000226417'
+        # draw_heatmaps(x.data.cpu().numpy(), '{}_conv_backbone_{}.jpg'.format(image_name, self.mode), ratio=50.)
+        # input = torch.randn(1,1,5,5).cuda()
+        # dcn = DCN(1,1,kernel_size=(3,3), stride=1,padding=1).cuda()
+        # dcv_conv_mask_o = dcn.conv_offset_mask(input)
+        # dcn_x = dcn(input)
         p1_conv1 = self.p1_conv1(x)
+        # f1_conv1 = F.relu(self.filter1(p1_conv1))
+        # sparse_p1 = _nms(p1_conv1, kernel=5)
+        # pool1    = self.pool1(sparse_p1)
         pool1    = self.pool1(p1_conv1)
+        # draw_heatmaps(p1_conv1.data.cpu().numpy(), '{}_conv_top_{}.jpg'.format(image_name, self.mode), ratio=100.)
+        # # draw_heatmaps(f1_conv1.data.cpu().numpy(), '000000000785_afterf_top.jpg', ratio=100.)
+        # draw_heatmaps(pool1.data.cpu().numpy(), '{}_afterp_top_{}.jpg'.format(image_name, self.mode), ratio=100.)
 
         # pool 2
         p2_conv1 = self.p2_conv1(x)
+        # f2_conv1 = F.relu(self.filter2(p2_conv1))
+        # sparse_p2 = _nms(p2_conv1, kernel=5)
+        # pool2    = self.pool2(sparse_p2)
         pool2    = self.pool2(p2_conv1)
+        # draw_heatmaps(p2_conv1.data.cpu().numpy(), '{}_conv_left_{}.jpg'.format(image_name, self.mode), ratio=100.)
+        # # draw_heatmaps(f2_conv1.data.cpu().numpy(), '000000000785_afterf_left.jpg', ratio=100.)
+        # draw_heatmaps(pool2.data.cpu().numpy(), '{}_afterp_left_{}.jpg'.format(image_name, self.mode), ratio=100.)
 
         # pool 1 + pool 2
         p_conv1 = self.p_conv1(pool1 + pool2)
+        # sparse_p3 = _nms(p_conv1, kernel=3)
         p_bn1   = self.p_bn1(p_conv1)
 
         conv1 = self.conv1(x)
@@ -223,4 +257,243 @@ class corner_pool(nn.Module):
         relu1 = self.relu1(p_bn1 + bn1)
 
         conv2 = self.conv2(relu1)
+        # draw_heatmaps(conv2.data.cpu().numpy(), '{}_conv_lt_{}.jpg'.format(image_name, self.mode), ratio=100.)
         return conv2
+
+
+class DcnPool(nn.Module):
+    def __init__(self, dim_in, dim_out, mode0, mode1, kernel=(3,3), padding=1, group=1):
+        # **********************************
+        # mode: 1 for top-left corner
+        #       2 for bottom-right corner
+        # ==================================
+        super(DcnPool, self).__init__()
+        self._init_layers(dim_in, dim_out, mode0, mode1, kernel=kernel, padding=padding, group=group)
+
+    def _init_layers(self, dim_in, dim_out, mode0, mode1, kernel, padding, group):
+        self.corner_conv = convolution(3, dim_in, dim_out)
+        self.p1_conv1 = convolution(3, dim_in, dim_out)
+        self.p2_conv1 = convolution(3, dim_in, dim_out)
+
+        self.p_conv1 = nn.Conv2d(dim_out, dim_in, (3, 3), padding=(1, 1), bias=False)
+        self.p_bn1 = nn.BatchNorm2d(dim_in)
+
+        self.conv1 = nn.Conv2d(dim_in, dim_in, (1, 1), bias=False)
+        self.bn1 = nn.BatchNorm2d(dim_in)
+        self.relu1 = nn.ReLU(inplace=True)
+
+        self.conv2 = convolution(3, dim_in, dim_in)
+
+        self.pool1 = DCNPooling(dim_out, dim_out, kernel, 1, padding, mode0)
+        self.pool2 = DCNPooling(dim_out, dim_out, kernel, 1, padding, mode1)
+        self.dcn_bn= nn.BatchNorm2d(dim_out)
+
+
+    def forward(self, x):
+        p1_conv1 = self.p1_conv1(x)
+        pool1 = self.pool1(p1_conv1)
+
+        p2_conv1 = self.p2_conv1(x)
+        pool2 = self.pool2(p2_conv1)
+
+        p_conv1 = self.p_conv1(pool1 + pool2)
+        p_bn1 = self.p_bn1(p_conv1)
+
+        conv1 = self.conv1(x)
+        bn1 = self.bn1(conv1)
+        relu1 = self.relu1(p_bn1 + bn1)
+
+        conv2 = self.conv2(relu1)
+        return conv2
+
+    # generate feature maps shifted based on offset_mask of DCN
+    # def gen_off(self, feat):
+    #     dcn_offset = self.dcn.conv_offset_mask(feat)
+    #     x, y, mask = torch.chunk(dcn_offset, 3, dim=1)
+    #     offset = torch.cat((x, y), dim=1)
+    #     modulate_ratio = torch.sigmoid(mask)
+    #     shift_coor = None
+    #
+    #     return offset, shift_coor
+
+
+def draw_image(img, file):
+    # gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    cv2.imwrite(file, img)
+
+def map_to_image(heat, ratio=5.):
+    # img = np.tile(heat[:,:,None], (1,1,3))
+    img = heat* ratio
+    return img
+
+def draw_heatmaps(heats, file, ratio=5.):
+    # heat_max_cls = np.max(heats, axis=1)
+    for i in range(100):
+        file_i = file.replace('.', '_{}.'.format(i))
+        heat_i = heats[0,i,...]
+        # heat_0 = heat_max_cls[0, ...]
+        image_0 = map_to_image(heat_i, ratio=ratio)
+        draw_image(image_0, file_i)
+
+
+class corner_filter(nn.Module):
+    def __init__(self, dim_out, dim_in, mode, radius):
+        super(corner_filter, self).__init__()
+        self._init_layers(dim_out, dim_in, mode, radius)
+        # -------- filter mode-----------
+        # top_mode : 0
+        # left_mode : 1
+        # bottom_mode : 2
+        # right_mode : 3
+        # -------------------------------
+    def _init_layers(self, dim_out, dim_in, mode, radius):
+        self.groups = dim_in
+        self.padding = radius
+        kernel = self.gene_ker(radius, dim_out, mode)
+        self.ker_w = nn.Parameter(data=kernel, requires_grad=False)
+    def forward(self, x):
+        after_filter = F.conv2d(x, self.ker_w, padding=self.padding, groups=self.groups)
+        return after_filter
+    @staticmethod
+    def gene_ker(radius, dim_out, mode):
+        H = W = 2*radius +1
+        h_inds, w_inds = np.ogrid[:H,:W]
+        dist_from_center = np.sqrt((h_inds - radius)**2 + (w_inds - radius)**2)
+        circle_mask = dist_from_center <= radius
+
+        if mode == 1 or mode == 3:
+            dist_mode = np.abs(w_inds - radius) + h_inds - radius
+            if mode == 1 :
+                dist_mode = dist_mode[::-1, :]
+        elif mode == 0 or mode == 2:
+            dist_mode = np.abs(h_inds - radius) + w_inds - radius
+            if mode ==0 :
+                dist_mode = dist_mode[:,::-1]
+        else:
+            raise Exception('Wrong number for filter mode in class corner_filter.')
+
+        # if mode == 1 or mode == 3:
+        #     dist_mode = np.abs(h_inds - radius) + w_inds - radius
+        #     if mode == 1 :
+        #         dist_mode = dist_mode[:,::-1]
+        # elif mode == 0 or mode == 2:
+        #     dist_mode = np.abs(w_inds - radius) + h_inds - radius
+        #     if mode ==0 :
+        #         dist_mode = dist_mode[::-1, :]
+        # else:
+        #     raise Exception('Wrong number for filter mode in class corner_filter.')
+        circle_mask[dist_mode<=0] = 0
+        # circle_mask = (circle_mask * -1. / np.sum(circle_mask)).astype(np.float)
+        circle_mask = (circle_mask * -1 ).astype(np.float)
+        circle_mask[radius, radius] = -np.sum(circle_mask)
+        kernel = torch.Tensor(circle_mask)
+        kernel = kernel.expand(dim_out, 1,H, W)
+        return kernel
+
+class DCNPooling(DCNv2):
+
+    def __init__(self, in_channels, out_channels,
+                 kernel_size, stride, padding,mode,
+                 dilation=1, deformable_groups=1):
+        super(DCNPooling, self).__init__(in_channels, out_channels,
+                                  kernel_size, stride, padding, dilation, deformable_groups)
+
+        channels_ = self.deformable_groups * 3 * self.kernel_size[0] * self.kernel_size[1]
+        self.conv_offset_mask = nn.Conv2d(self.in_channels,
+                                          channels_,
+                                          kernel_size=self.kernel_size,
+                                          stride=self.stride,
+                                          padding=self.padding,
+                                          bias=True)
+        self.mode = mode
+        self.init_offset()
+
+    def init_offset(self):
+        self.conv_offset_mask.weight.data.zero_()
+        self.conv_offset_mask.bias.data.zero_()
+
+    def forward(self, input):
+        out = self.conv_offset_mask(input)
+        o1, o2, mask = torch.chunk(out, 3, dim=1)
+        edge_zero = torch.zeros_like(o1)
+        offset = torch.cat((o1,o2), dim=1)
+        mask = torch.sigmoid(mask)
+        # ***********************************
+        #
+        # 0: for top pooling (left extreme point)
+        # 1: for left pooling (top extreme point)
+        # 2: for bottom pooling (right extreme point)
+        # 3: for right pooling (bottom extreme point)
+        #
+        # ***********************************
+        keep = torch.zeros_like(edge_zero)
+        if self.mode == 0:
+            keep = (offset[:,1::2,:,:] >= 0).float()
+            offset[:,0::2,:,:] *= edge_zero
+
+        elif self.mode == 1:
+            keep = (offset[:,0::2,:,:] >= 0).float()
+            offset[:,1::2,:,:] *= edge_zero
+
+        elif self.mode == 2:
+            keep = (offset[:,1::2,:,:] <= 0).float()
+            offset[:,0::2,:,:] *= edge_zero
+
+        elif self.mode == 3:
+            keep = (offset[:,0::2,:,:] <= 0).float()
+            offset[:,1::2,:,:] *= edge_zero
+
+        mask = keep * mask
+        return dcn_v2_conv(input, offset, mask,
+                           self.weight, self.bias,
+                           self.stride,
+                           self.padding,
+                           self.dilation,
+                           self.deformable_groups)
+
+
+# class corner_filter(object):
+#     def __init__(self, dim_out, dim_in, mode, radius):
+#         super(corner_filter, self).__init__()
+#         self._init_layers(dim_out, dim_in, mode, radius)
+#         # -------- filter mode-----------
+#         # top_mode : 0
+#         # left_mode : 1
+#         # bottom_mode : 2
+#         # right_mode : 3
+#         # -------------------------------
+#     def _init_layers(self, dim_out, dim_in, mode, radius):
+#         self.groups = dim_in
+#         self.padding = radius
+#         self.kernel = self.gene_ker(radius, dim_out, mode)
+#         # self.ker_w = nn.Parameter(data=kernel, requires_grad=False)
+#
+#     def forward(self, x):
+#         after_filter = F.conv2d(x, self.kernel, padding=self.padding, groups=self.groups)
+#         return after_filter
+#     def __call__(self, x):
+#         return self.forward(x)
+#     @staticmethod
+#     def gene_ker(radius, dim_out,mode):
+#         H = W = 2*radius +1
+#         h_inds, w_inds = np.ogrid[:H,:W]
+#         dist_from_center = np.sqrt((h_inds - radius)**2 + (w_inds - radius)**2)
+#         circle_mask = dist_from_center <= radius
+#
+#         if mode == 0 or mode == 2:
+#             dist_mode = np.abs(w_inds - radius) + h_inds - radius
+#             if mode == 0 :
+#                 dist_mode = dist_mode[::-1, :]
+#         elif mode == 1 or mode == 3:
+#             dist_mode = np.abs(h_inds - radius) + w_inds - radius
+#             if mode ==1 :
+#                 dist_mode = dist_mode[:,::-1]
+#         else:
+#             raise Exception('Wrong number for filter mode in class corner_filter.')
+#         circle_mask[dist_mode<=0] = 0
+#         circle_mask = (circle_mask * -1. / np.sum(circle_mask)).astype(np.float)
+#
+#         circle_mask[radius, radius] = -np.sum(circle_mask)
+#         kernel = torch.Tensor(circle_mask).cuda()
+#         kernel = kernel.expand(dim_out, 1,H, W)
+#         return kernel

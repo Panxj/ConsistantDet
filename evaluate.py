@@ -22,6 +22,9 @@ def parse_args():
     parser.add_argument("--split", dest="split",
                         help="which split to use",
                         default="validation", type=str)
+    parser.add_argument("--model_dir", dest="model_dir",
+                        help="specific model path to use",
+                        default=None, type=str)
     parser.add_argument("--suffix", dest="suffix", default=None, type=str)
     parser.add_argument("--debug", action="store_true")
 
@@ -38,6 +41,7 @@ def test(db, system_config, model, args):
     testiter = args.testiter
     debug    = args.debug
     suffix   = args.suffix
+    model_dir = args.model_dir
 
     result_dir = system_config.result_dir
     result_dir = os.path.join(result_dir, str(testiter), split)
@@ -53,7 +57,7 @@ def test(db, system_config, model, args):
     print("building neural network...")
     nnet = NetworkFactory(system_config, model)
     print("loading parameters...")
-    nnet.load_params(test_iter)
+    nnet.load_params(test_iter, model_dir=model_dir)
 
     nnet.cuda()
     nnet.eval_mode()

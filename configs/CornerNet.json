@@ -1,16 +1,16 @@
 {
     "system": {
         "dataset": "COCO",
-        "batch_size": 49,
+        "batch_size": 8,
         "sampling_function": "cornernet",
 
-        "train_split": "trainval",
-        "val_split": "minival",
+        "train_split": "train",
+        "val_split": "val",
 
         "learning_rate": 0.00025,
         "decay_rate": 10,
 
-        "val_iter": 100,
+        "val_iter": 1000,
 
         "opt_algo": "adam",
         "prefetch_size": 5,
@@ -19,7 +19,7 @@
         "stepsize": 450000,
         "snapshot": 5000,
 
-        "chunk_sizes": [4, 5, 5, 5, 5, 5, 5, 5, 5, 5],
+        "chunk_sizes": [2, 3, 3],
 
         "data_dir": "./data"
     },
