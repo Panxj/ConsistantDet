@@ -33,7 +33,7 @@ def cornernet(db, nnet, result_dir, debug=False, decode_func=decode):
 
     if db.split != "train2017":
         # db_inds = db.db_inds[:100] if debug else db.db_inds
-        db_inds = db.db_inds[:100] if debug else db.db_inds[:200]
+        db_inds = db.db_inds[:100] if debug else db.db_inds[:2000]
     else:
         db_inds = db.db_inds[:100] if debug else db.db_inds[:5000]
 

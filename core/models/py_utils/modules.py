@@ -120,15 +120,23 @@ class hg_net(nn.Module):
         image = xs[0]
         cnvs  = self.hg(image)
 
-        tl_modules = [tl_mod_(cnv) for tl_mod_, cnv in zip(self.tl_modules, cnvs)]
-        br_modules = [br_mod_(cnv) for br_mod_, cnv in zip(self.br_modules, cnvs)]
+        tl_offsets = br_offsets = None
+        tl_modules = br_modules = None
+        tl_modules_g = [tl_mod_(cnv) for tl_mod_, cnv in zip(self.tl_modules, cnvs)]
+        br_modules_g = [br_mod_(cnv) for br_mod_, cnv in zip(self.br_modules, cnvs)]
+        if isinstance(tl_modules_g[0], tuple):
+            tl_modules=[tl_module[0] for tl_module in tl_modules_g]
+            br_modules=[br_module[0] for br_module in br_modules_g]
+            tl_offsets = [tl_module[1] for tl_module in tl_modules_g]
+            br_offsets = [br_module[1] for br_module in br_modules_g]
         tl_heats   = [tl_heat_(tl_mod) for tl_heat_, tl_mod in zip(self.tl_heats, tl_modules)]
         br_heats   = [br_heat_(br_mod) for br_heat_, br_mod in zip(self.br_heats, br_modules)]
         tl_tags    = [tl_tag_(tl_mod)  for tl_tag_,  tl_mod in zip(self.tl_tags,  tl_modules)]
         br_tags    = [br_tag_(br_mod)  for br_tag_,  br_mod in zip(self.br_tags,  br_modules)]
         tl_offs    = [tl_off_(tl_mod)  for tl_off_,  tl_mod in zip(self.tl_offs,  tl_modules)]
         br_offs    = [br_off_(br_mod)  for br_off_,  br_mod in zip(self.br_offs,  br_modules)]
-        return [tl_heats, br_heats, tl_tags, br_tags, tl_offs, br_offs]
+
+        return [tl_heats, br_heats, tl_tags, br_tags, tl_offs, br_offs, tl_offsets, br_offsets]
 
     def _test(self, *xs, **kwargs):
         image = xs[0]
@@ -136,6 +144,10 @@ class hg_net(nn.Module):
 
         tl_mod = self.tl_modules[-1](cnvs[-1])
         br_mod = self.br_modules[-1](cnvs[-1])
+        if isinstance(tl_mod, tuple):
+            tl_mod, t_offset, l_offset = tl_mod
+            br_mod, b_offset, r_offset = br_mod
+
 
         tl_heat, br_heat = self.tl_heats[-1](tl_mod), self.br_heats[-1](br_mod)
         tl_tag,  br_tag  = self.tl_tags[-1](tl_mod),  self.br_tags[-1](br_mod)

@@ -67,7 +67,14 @@ class COCO(DETECTION):
                 "val_small": "val2017_0_50",
                 "testdev":  "testdev2017"
             }[split]
-            self._data_dir  = os.path.join(coco_dir, "images", self._split)
+            self._img_split = {
+                "train": "train2017",
+                "train_small": "train2017",
+                "val":  "val2017",
+                "val_small": "val2017",
+                "testdev":  "testdev2017"
+            }[split]
+            self._data_dir  = os.path.join(coco_dir, "images", self._img_split)
             self._anno_file = os.path.join(coco_dir, "annotations", "instances_{}.json".format(self._split))
 
             self._detections, self._eval_ids = self._load_coco_annos()

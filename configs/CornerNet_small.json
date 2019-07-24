@@ -4,7 +4,7 @@
         "batch_size": 2,
         "sampling_function": "cornernet",
 
-        "train_split": "train",
+        "train_split": "train_small",
         "val_split": "val",
 
         "learning_rate": 0.00025,

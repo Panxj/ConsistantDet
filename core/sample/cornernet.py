@@ -54,6 +54,7 @@ def cornernet(system_configs, db, k_ind, data_aug, debug):
     br_heatmaps = np.zeros((batch_size, categories, output_size[0], output_size[1]), dtype=np.float32)
     tl_regrs    = np.zeros((batch_size, max_tag_len, 2), dtype=np.float32)
     br_regrs    = np.zeros((batch_size, max_tag_len, 2), dtype=np.float32)
+    hw_regrs    = np.zeros((batch_size, max_tag_len, 2), dtype=np.float32)
     tl_tags     = np.zeros((batch_size, max_tag_len), dtype=np.int64)
     br_tags     = np.zeros((batch_size, max_tag_len), dtype=np.int64)
     tag_masks   = np.zeros((batch_size, max_tag_len), dtype=np.uint8)
@@ -137,6 +138,7 @@ def cornernet(system_configs, db, k_ind, data_aug, debug):
             tag_ind = tag_lens[b_ind]
             tl_regrs[b_ind, tag_ind, :] = [fxtl - xtl, fytl - ytl]
             br_regrs[b_ind, tag_ind, :] = [fxbr - xbr, fybr - ybr]
+            hw_regrs[b_ind, tag_ind, :] = [xbr - xtl, ybr - ytl]
             tl_tags[b_ind, tag_ind] = ytl * output_size[1] + xtl
             br_tags[b_ind, tag_ind] = ybr * output_size[1] + xbr
             tag_lens[b_ind] += 1
@@ -150,11 +152,12 @@ def cornernet(system_configs, db, k_ind, data_aug, debug):
     br_heatmaps = torch.from_numpy(br_heatmaps)
     tl_regrs    = torch.from_numpy(tl_regrs)
     br_regrs    = torch.from_numpy(br_regrs)
+    hw_regrs    = torch.from_numpy(hw_regrs)
     tl_tags     = torch.from_numpy(tl_tags)
     br_tags     = torch.from_numpy(br_tags)
     tag_masks   = torch.from_numpy(tag_masks)
 
     return {
         "xs": [images],
-        "ys": [tl_heatmaps, br_heatmaps, tag_masks, tl_regrs, br_regrs, tl_tags, br_tags]
+        "ys": [tl_heatmaps, br_heatmaps, tag_masks, tl_regrs, br_regrs, tl_tags, br_tags, hw_regrs]
     }, k_ind

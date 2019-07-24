@@ -291,10 +291,10 @@ class DcnPool(nn.Module):
 
     def forward(self, x):
         p1_conv1 = self.p1_conv1(x)
-        pool1 = self.pool1(p1_conv1)
+        pool1, offset_1 = self.pool1(p1_conv1)
 
         p2_conv1 = self.p2_conv1(x)
-        pool2 = self.pool2(p2_conv1)
+        pool2, offset_2 = self.pool2(p2_conv1)
 
         p_conv1 = self.p_conv1(pool1 + pool2)
         p_bn1 = self.p_bn1(p_conv1)
@@ -304,7 +304,7 @@ class DcnPool(nn.Module):
         relu1 = self.relu1(p_bn1 + bn1)
 
         conv2 = self.conv2(relu1)
-        return conv2
+        return conv2, torch.cat((offset_1,offset_2), dim=1)
 
     # generate feature maps shifted based on offset_mask of DCN
     # def gen_off(self, feat):
@@ -449,7 +449,7 @@ class DCNPooling(DCNv2):
                            self.stride,
                            self.padding,
                            self.dilation,
-                           self.deformable_groups)
+                           self.deformable_groups), offset
 
 
 # class corner_filter(object):
