@@ -72,4 +72,4 @@ class model(hg_net):
             tl_tags, br_tags, tl_offs, br_offs
         )
 
-        self.loss = CornerNet_Loss(pull_weight=1e-1, push_weight=1e-1, dcn_off_weight=1e-1)
+        self.loss = CornerNet_Loss(pull_weight=1e-1, push_weight=1e-1, dcn_off_weight=0.0)
