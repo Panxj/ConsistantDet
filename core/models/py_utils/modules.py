@@ -145,8 +145,8 @@ class hg_net(nn.Module):
         tl_mod = self.tl_modules[-1](cnvs[-1])
         br_mod = self.br_modules[-1](cnvs[-1])
         if isinstance(tl_mod, tuple):
-            tl_mod, t_offset, l_offset = tl_mod
-            br_mod, b_offset, r_offset = br_mod
+            tl_mod, _ = tl_mod
+            br_mod, _ = br_mod
 
 
         tl_heat, br_heat = self.tl_heats[-1](tl_mod), self.br_heats[-1](br_mod)
