@@ -4,7 +4,7 @@ import torch.nn as nn
 from .py_utils import TopPool, BottomPool, LeftPool, RightPool
 from .py_utils import DCN
 
-from .py_utils.utils import convolution, residual, corner_pool, DcnPool
+from .py_utils.utils import convolution, residual, DcnPool, feature_scatter
 from .py_utils.losses import CornerNet_Loss
 from .py_utils.modules import hg_module, hg, hg_net, dcn_hg_net
 
@@ -52,8 +52,15 @@ class model(hg_net):
         # tl_modules = nn.ModuleList([corner_pool(256, TopPool, LeftPool, mode=0) for _ in range(stacks)])
         # br_modules = nn.ModuleList([corner_pool(256, BottomPool, RightPool, mode=1) for _ in range(stacks)])
 
-        tl_modules = nn.ModuleList([DcnPool(256, 128, 0, 1, (3, 3), padding=1) for _ in range(stacks)])
-        br_modules = nn.ModuleList([DcnPool(256, 128, 2, 3, (3, 3), padding=1) for _ in range(stacks)])
+        # *******************************************************************
+        #  feature_scatter: wo : set outmode =0; set feasca_modules = None
+        #
+        #********************************************************************
+        tl_modules = nn.ModuleList([DcnPool(256, 128, 0, 1, (3, 3), padding=1, outmode=1, filter=False) for _ in range(stacks)])
+        br_modules = nn.ModuleList([DcnPool(256, 128, 2, 3, (3, 3), padding=1, outmode=1, filter=False) for _ in range(stacks)])
+
+        feasca_modules = nn.ModuleList([feature_scatter(256, 256, 0, 0) for _ in range(stacks)])
+        # feasca_modules = None
 
         tl_heats = nn.ModuleList([self._pred_mod(80) for _ in range(stacks)])
         br_heats = nn.ModuleList([self._pred_mod(80) for _ in range(stacks)])
@@ -69,7 +76,7 @@ class model(hg_net):
 
         super(model, self).__init__(
             hgs, tl_modules, br_modules, tl_heats, br_heats, 
-            tl_tags, br_tags, tl_offs, br_offs
+            tl_tags, br_tags, tl_offs, br_offs, feasca_modules=feasca_modules
         )
 
-        self.loss = CornerNet_Loss(pull_weight=1e-1, push_weight=1e-1, dcn_off_weight=0.0)
+        self.loss = CornerNet_Loss(pull_weight=1e-1, push_weight=1e-1, dcn_off_weight=1e-1)

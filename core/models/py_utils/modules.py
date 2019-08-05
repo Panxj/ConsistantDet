@@ -95,8 +95,8 @@ class hg(nn.Module):
 
 class hg_net(nn.Module):
     def __init__(
-        self, hg, tl_modules, br_modules, tl_heats, br_heats, 
-        tl_tags, br_tags, tl_offs, br_offs
+        self, hg, tl_modules, br_modules, tl_heats, br_heats,
+        tl_tags, br_tags, tl_offs, br_offs, feasca_modules=None
     ):
         super(hg_net, self).__init__()
 
@@ -107,6 +107,7 @@ class hg_net(nn.Module):
         self.tl_modules = tl_modules
         self.br_modules = br_modules
 
+        self.feasca_modules = feasca_modules
         self.tl_heats = tl_heats
         self.br_heats = br_heats
 
@@ -121,14 +122,18 @@ class hg_net(nn.Module):
         cnvs  = self.hg(image)
 
         tl_offsets = br_offsets = None
-        tl_modules = br_modules = None
-        tl_modules_g = [tl_mod_(cnv) for tl_mod_, cnv in zip(self.tl_modules, cnvs)]
-        br_modules_g = [br_mod_(cnv) for br_mod_, cnv in zip(self.br_modules, cnvs)]
-        if isinstance(tl_modules_g[0], tuple):
-            tl_modules=[tl_module[0] for tl_module in tl_modules_g]
-            br_modules=[br_module[0] for br_module in br_modules_g]
-            tl_offsets = [tl_module[1] for tl_module in tl_modules_g]
-            br_offsets = [br_module[1] for br_module in br_modules_g]
+        tl_modules = [tl_mod_(cnv) for tl_mod_, cnv in zip(self.tl_modules, cnvs)]
+        br_modules = [br_mod_(cnv) for br_mod_, cnv in zip(self.br_modules, cnvs)]
+        if isinstance(tl_modules[0], tuple):
+            tl_offsets = [tl_module[1] for tl_module in tl_modules]
+            br_offsets = [br_module[1] for br_module in br_modules]
+            tl_modules=[tl_module[0] for tl_module in tl_modules]
+            br_modules=[br_module[0] for br_module in br_modules]
+
+
+        if self.feasca_modules is not None:
+            tl_modules = [feasca_mod(cnv, tl_module) for feasca_mod, cnv, tl_module in zip(self.feasca_modules, cnvs, tl_modules)]
+            br_modules = [feasca_mod(cnv, br_module) for feasca_mod, cnv, br_module in zip(self.feasca_modules, cnvs, br_modules)]
         tl_heats   = [tl_heat_(tl_mod) for tl_heat_, tl_mod in zip(self.tl_heats, tl_modules)]
         br_heats   = [br_heat_(br_mod) for br_heat_, br_mod in zip(self.br_heats, br_modules)]
         tl_tags    = [tl_tag_(tl_mod)  for tl_tag_,  tl_mod in zip(self.tl_tags,  tl_modules)]

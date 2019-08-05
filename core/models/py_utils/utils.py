@@ -260,17 +260,71 @@ class corner_pool(nn.Module):
         # draw_heatmaps(conv2.data.cpu().numpy(), '{}_conv_lt_{}.jpg'.format(image_name, self.mode), ratio=100.)
         return conv2
 
+class feature_scatter(nn.Module):
+    def __init__(self, dim_in, dim_out, mode, agg_mode):
+        # **********************************
+        # mode: 0 with original feature
+        #       1 with dcn feature
+        #       2 multi scale feature
+        # agg_mode: 0 add
+        #           1 multiply
+        # ==================================
+        super(feature_scatter, self).__init__()
+        self._init_layers(dim_in, dim_out, mode=mode, agg_mode=agg_mode)
+
+    def _init_layers(self, dim_in, dim_out, mode, agg_mode):
+        self.mode = mode
+        if mode == 0:
+            self.conv1 = nn.Conv2d(dim_in, dim_out, (1,1), bias=False)
+        elif mode == 1:
+            self.conv1 = DCN(dim_in, dim_out, (3,3), 1,1)
+        elif mode == 2:
+            self.conv0 = nn.Conv2d(dim_in, dim_out, (1,1), bias=False)
+            self.maxpool0 = nn.Sequential(nn.MaxPool2d(2,2),  nn.Upsample(scale_factor=2, mode='nearest'))
+            self.maxpool0 = nn.Sequential(nn.MaxPool2d(4,4),  nn.Upsample(scale_factor=4, mode='nearest'))
+            self.conv1 = nn.Conv2d(dim_out, dim_out, (3,3), padding=1)
+        self.agg_mode = agg_mode
+        self.bn1 = nn.BatchNorm2d(dim_in)
+        self.relu1 = nn.ReLU(inplace=True)
+
+        self.conv2 = convolution(3, dim_in, dim_in)
+
+    def forward(self, x, pool):
+        if self.mode == 2:
+            conv0 = self.conv0(x)
+            pool0 = self.maxpool0(conv0)
+            pool1 = self.maxpool0(conv0)
+            conv1 = self.conv1(pool0 + pool1)
+        else:
+            conv1 = self.conv1(x)
+        bn1 = self.bn1(conv1)
+        if self.agg_mode ==0:
+            pool  = F.relu(pool)
+            relu = self.relu1(pool + bn1)
+        else:
+            pool = torch.sigmoid(pool)
+            relu = self.relu1(pool * bn1)
+
+        conv2 = self.conv2(relu)
+
+        return conv2
+
 
 class DcnPool(nn.Module):
-    def __init__(self, dim_in, dim_out, mode0, mode1, kernel=(3,3), padding=1, group=1):
+    def __init__(self, dim_in, dim_out, mode0, mode1, kernel=(3,3), padding=1, group=1, outmode=0,filter=False):
         # **********************************
         # mode: 1 for top-left corner
         #       2 for bottom-right corner
+        #
+        # outmode: 0 for original output
+        #          1 for feture scatter
         # ==================================
         super(DcnPool, self).__init__()
-        self._init_layers(dim_in, dim_out, mode0, mode1, kernel=kernel, padding=padding, group=group)
+        self._init_layers(dim_in, dim_out, mode0, mode1, kernel=kernel, padding=padding,
+                          group=group, outmode=outmode, filter=filter)
 
-    def _init_layers(self, dim_in, dim_out, mode0, mode1, kernel, padding, group):
+    def _init_layers(self, dim_in, dim_out, mode0, mode1, kernel, padding, group, outmode, filter):
+        self.outmode = outmode
         self.corner_conv = convolution(3, dim_in, dim_out)
         self.p1_conv1 = convolution(3, dim_in, dim_out)
         self.p2_conv1 = convolution(3, dim_in, dim_out)
@@ -283,27 +337,37 @@ class DcnPool(nn.Module):
         self.relu1 = nn.ReLU(inplace=True)
 
         self.conv2 = convolution(3, dim_in, dim_in)
-
+        self.filter = filter
+        if self.filter:
+            self.corner_filter1 = corner_filter(dim_in,dim_in,mode0,1)
+            self.corner_filter2 = corner_filter(dim_in,dim_in,mode1,1)
         self.pool1 = DCNPooling(dim_out, dim_out, kernel, 1, padding, mode0)
         self.pool2 = DCNPooling(dim_out, dim_out, kernel, 1, padding, mode1)
         self.dcn_bn= nn.BatchNorm2d(dim_out)
 
 
     def forward(self, x):
-        p1_conv1 = self.p1_conv1(x)
+        x1 = x
+        x2 = x
+        if self.filter:
+            x1 = self.corner_filter1(x)
+            x2 = self.corner_filter2(x)
+        p1_conv1 = self.p1_conv1(x1)
         pool1, offset_1 = self.pool1(p1_conv1)
 
-        p2_conv1 = self.p2_conv1(x)
+        p2_conv1 = self.p2_conv1(x2)
         pool2, offset_2 = self.pool2(p2_conv1)
 
         p_conv1 = self.p_conv1(pool1 + pool2)
         p_bn1 = self.p_bn1(p_conv1)
-
+        if self.outmode==1:
+            return p_bn1, torch.cat((offset_1,offset_2), dim=1)
         conv1 = self.conv1(x)
         bn1 = self.bn1(conv1)
         relu1 = self.relu1(p_bn1 + bn1)
 
         conv2 = self.conv2(relu1)
+
         return conv2, torch.cat((offset_1,offset_2), dim=1)
 
     # generate feature maps shifted based on offset_mask of DCN
@@ -352,7 +416,7 @@ class corner_filter(nn.Module):
         kernel = self.gene_ker(radius, dim_out, mode)
         self.ker_w = nn.Parameter(data=kernel, requires_grad=False)
     def forward(self, x):
-        after_filter = F.conv2d(x, self.ker_w, padding=self.padding, groups=self.groups)
+        after_filter = F.relu(F.conv2d(x, self.ker_w, padding=self.padding, groups=self.groups))
         return after_filter
     @staticmethod
     def gene_ker(radius, dim_out, mode):
@@ -424,26 +488,45 @@ class DCNPooling(DCNv2):
         # 1: for left pooling (top extreme point)
         # 2: for bottom pooling (right extreme point)
         # 3: for right pooling (bottom extreme point)
-        #
+        # offset_channel:x1,y1,x2,y2
+        # x : row, y:col
         # ***********************************
+        # keep = torch.zeros_like(edge_zero)
+        # if self.mode == 0:
+        #     keep = (offset[:,1::2,:,:] >= 0).float()
+        #     offset[:,0::2,:,:] *= edge_zero
+        #
+        # elif self.mode == 1:
+        #     keep = (offset[:,0::2,:,:] >= 0).float()
+        #     offset[:,1::2,:,:] *= edge_zero
+        #
+        # elif self.mode == 2:
+        #     keep = (offset[:,1::2,:,:] <= 0).float()
+        #     offset[:,0::2,:,:] *= edge_zero
+        #
+        # elif self.mode == 3:
+        #     keep = (offset[:,0::2,:,:] <= 0).float()
+        #     offset[:,1::2,:,:] *= edge_zero
+
         keep = torch.zeros_like(edge_zero)
         if self.mode == 0:
-            keep = (offset[:,1::2,:,:] >= 0).float()
-            offset[:,0::2,:,:] *= edge_zero
+            keep = (offset[:, 0::2, :, :] >= 0).float()
+            offset[:, 1::2, :, :] *= edge_zero
 
         elif self.mode == 1:
-            keep = (offset[:,0::2,:,:] >= 0).float()
-            offset[:,1::2,:,:] *= edge_zero
+            keep = (offset[:, 1::2, :, :] >= 0).float()
+            offset[:, 0::2, :, :] *= edge_zero
 
         elif self.mode == 2:
-            keep = (offset[:,1::2,:,:] <= 0).float()
-            offset[:,0::2,:,:] *= edge_zero
+            keep = (offset[:, 0::2, :, :] <= 0).float()
+            offset[:, 1::2, :, :] *= edge_zero
 
         elif self.mode == 3:
-            keep = (offset[:,0::2,:,:] <= 0).float()
-            offset[:,1::2,:,:] *= edge_zero
+            keep = (offset[:, 1::2, :, :] <= 0).float()
+            offset[:, 0::2, :, :] *= edge_zero
 
         mask = keep * mask
+
         return dcn_v2_conv(input, offset, mask,
                            self.weight, self.bias,
                            self.stride,

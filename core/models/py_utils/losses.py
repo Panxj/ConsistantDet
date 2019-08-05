@@ -49,8 +49,8 @@ def _dcn_off_loss(dcn_off, dcn_gt_off, mask, mode=None):
     mask_gt = mask.unsqueeze(2).expand_as(dcn_gt_off)
     dcn_gt_off = dcn_gt_off[mask_gt]
     cnt_point = dcn_off.size(2)//4
-    y_offset = dcn_off[:, :, 1:cnt_point*2:2]
-    x_offset = dcn_off[:, :, 2*cnt_point::2]
+    y_offset = dcn_off[:, :, 0:cnt_point*2:2]
+    x_offset = dcn_off[:, :, 2*cnt_point+1::2]
 
     mask_pred = mask.unsqueeze(2).expand_as(y_offset)
     y_offset = y_offset[mask_pred]
@@ -265,8 +265,8 @@ class CornerNet_Loss(nn.Module):
         off_loss = self.off_weight * off_loss
 
         # dcn_offsets loss
+        dcn_offset_loss = 0
         if tl_offsets is not None and br_offsets is not None:
-            dcn_offset_loss = 0
             tl_offsets = [_tranpose_and_gather_feat(tl_offset, gt_tl_ind) for tl_offset in tl_offsets]
             br_offsets = [_tranpose_and_gather_feat(br_offset, gt_br_ind) for br_offset in br_offsets]
 
